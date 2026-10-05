@@ -149,6 +149,7 @@ class LicenseManager:
             self.session.headers.update({"X-Admin-Key": ADMIN_KEY})
 
         self.current_state = LicenseState(device_id=self.device_id)
+        self.trial_details: Dict[str, Any] = {}
 
     # -------------------------------------------------------------
     # Disk Storage Helpers (Atomic read/write ~/.zed_license.json)
@@ -234,14 +235,40 @@ class LicenseManager:
             logger.warning("Could not persist trial file: %s", e)
         return data
 
-    def evaluate_trial(self) -> Tuple[bool, int, str]:
+    def get_network_time(self) -> Tuple[datetime.datetime, bool]:
         """
-        Evaluates 30-day free trial status.
-        Returns: (is_active, days_remaining, message)
+        Attempts to query network/server time via HTTP Date header.
+        Returns: (datetime_utc, is_synced: bool)
+        """
+        import email.utils
+        targets = [
+            self.server_url,
+            "https://bilnov-gallery.bilnov.com",
+            "https://cloudflare.com",
+            "https://www.google.com",
+        ]
+        for target in targets:
+            try:
+                resp = self.session.head(target, timeout=3)
+                date_hdr = resp.headers.get("Date")
+                if date_hdr:
+                    dt = email.utils.parsedate_to_datetime(date_hdr)
+                    if dt:
+                        return dt.astimezone(datetime.timezone.utc), True
+            except Exception:
+                continue
+
+        return datetime.datetime.now(datetime.timezone.utc), False
+
+    def evaluate_trial_detailed(self) -> Dict[str, Any]:
+        """
+        Evaluates 30-day free trial using verified network time.
+        Returns detailed dict with days, hours, sync status, and formatted string.
         """
         data = self.get_or_create_trial()
         started_str = data.get("started_at", "")
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now, is_net_synced = self.get_network_time()
+
         try:
             started_dt = datetime.datetime.fromisoformat(started_str.replace("Z", "+00:00"))
         except Exception:
@@ -249,14 +276,42 @@ class LicenseManager:
 
         elapsed_seconds = (now - started_dt).total_seconds()
         total_seconds = TRIAL_DAYS * 86400
-        remaining_seconds = total_seconds - elapsed_seconds
+        remaining_seconds = max(0.0, total_seconds - elapsed_seconds)
 
-        if remaining_seconds > 0:
-            days_left = max(1, int(remaining_seconds / 86400) + 1)
-            days_left = min(TRIAL_DAYS, days_left)
-            return True, days_left, f"30-Day Free Trial: {days_left} day(s) remaining"
+        days = int(remaining_seconds // 86400)
+        hours = int((remaining_seconds % 86400) // 3600)
+        days_left = min(TRIAL_DAYS, max(1, int(remaining_seconds / 86400) + 1)) if remaining_seconds > 0 else 0
+        is_active = remaining_seconds > 0
+
+        expiry_dt = started_dt + datetime.timedelta(days=TRIAL_DAYS)
+        expiry_str = expiry_dt.strftime("%Y-%m-%d %H:%M UTC")
+
+        if is_active:
+            msg = f"30-Day Free Trial: {days} day(s), {hours} hour(s) remaining"
         else:
-            return False, 0, "30-Day Free Trial has expired. Workstation license required."
+            msg = "30-Day Free Trial has expired. Workstation license required."
+
+        result = {
+            "is_active": is_active,
+            "days_remaining": days,
+            "hours_remaining": hours,
+            "days_left": days_left,
+            "remaining_seconds": int(remaining_seconds),
+            "expires_at": expiry_str,
+            "is_net_synced": is_net_synced,
+            "message": msg,
+            "started_at": started_str,
+        }
+        self.trial_details = result
+        return result
+
+    def evaluate_trial(self) -> Tuple[bool, int, str]:
+        """
+        Evaluates 30-day free trial status.
+        Returns: (is_active, days_remaining, message)
+        """
+        details = self.evaluate_trial_detailed()
+        return details["is_active"], details["days_left"], details["message"]
 
     # -------------------------------------------------------------
     # Lifecycle Workflows

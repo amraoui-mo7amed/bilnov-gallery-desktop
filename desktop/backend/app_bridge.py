@@ -119,10 +119,6 @@ class AppBridge(QObject):
         return self.lic.current_state.customer_name
 
     @Property(str, notify=licenseChanged)
-    def expiresAt(self) -> str:
-        return self.lic.current_state.expires_at or "Perpetual / Unset"
-
-    @Property(str, notify=licenseChanged)
     def deviceId(self) -> str:
         return self.lic.device_id
 
@@ -134,8 +130,76 @@ class AppBridge(QObject):
     def isTrial(self) -> bool:
         return self.lic.current_state.status_code == "TRIAL"
 
+    @Property(str, notify=licenseChanged)
+    def expiresAt(self) -> str:
+        return self.lic.current_state.expires_at or "Perpetual / Unset"
+
+    @Property(str, notify=licenseChanged)
+    def customerEmail(self) -> str:
+        return self.lic.current_state.customer_email or ""
+
+    @Property(str, notify=licenseChanged)
+    def customerPhone(self) -> str:
+        return self.lic.current_state.customer_phone or ""
+
+    @Property(str, notify=licenseChanged)
+    def licenseExpiresAt(self) -> str:
+        return self.lic.current_state.expires_at or "Perpetual"
+
+    @Property(int, notify=licenseChanged)
+    def trialDaysRemaining(self) -> int:
+        details = getattr(self.lic, "trial_details", {})
+        if not details:
+            details = self.lic.evaluate_trial_detailed()
+        return details.get("days_remaining", 0)
+
+    @Property(int, notify=licenseChanged)
+    def trialHoursRemaining(self) -> int:
+        details = getattr(self.lic, "trial_details", {})
+        if not details:
+            details = self.lic.evaluate_trial_detailed()
+        return details.get("hours_remaining", 0)
+
+    @Property(str, notify=licenseChanged)
+    def trialFormattedTime(self) -> str:
+        details = getattr(self.lic, "trial_details", {})
+        if not details:
+            details = self.lic.evaluate_trial_detailed()
+        days = details.get("days_remaining", 0)
+        hours = details.get("hours_remaining", 0)
+        return f"{days}d {hours}h"
+
+    @Property(str, notify=licenseChanged)
+    def trialExpiresAt(self) -> str:
+        details = getattr(self.lic, "trial_details", {})
+        if not details:
+            details = self.lic.evaluate_trial_detailed()
+        return details.get("expires_at", "N/A")
+
+    @Property(bool, notify=licenseChanged)
+    def isNetworkTimeSynced(self) -> bool:
+        details = getattr(self.lic, "trial_details", {})
+        if not details:
+            details = self.lic.evaluate_trial_detailed()
+        return details.get("is_net_synced", False)
+
+    @Slot()
+    def refreshTrialStatus(self):
+        """Re-checks trial status against the network."""
+        def _task():
+            return self.lic.evaluate_trial_detailed()
+
+        def _on_success(details):
+            self.licenseChanged.emit()
+            if details.get("is_net_synced"):
+                self.toast.emit("success", f"Trial status verified from server ({details.get('days_remaining')}d {details.get('hours_remaining')}h remaining)")
+            else:
+                self.toast.emit("info", "Trial evaluated using local clock (server unreachable)")
+
+        self.thread_pool.start(Worker(_task, on_success=_on_success))
+
     # =============================================================
-    # Internationalization / Language Preference (ar / en / fr)
+    # Internationalization / Language Preference (en / fr only)
     # =============================================================
 
     @Property(str, notify=languageChanged)
@@ -145,7 +209,7 @@ class AppBridge(QObject):
 
     @Slot(str)
     def saveLanguagePreference(self, lang: str):
-        if lang in ["en", "fr", "ar"]:
+        if lang in ["en", "fr"]:
             settings = QSettings("Bilnov", "BilnovGallery")
             current = str(settings.value("language", "en"))
             if current != lang:
@@ -381,3 +445,147 @@ class AppBridge(QObject):
             self.toast.emit("error", f"Delete error: {str(exc)}")
 
         self.thread_pool.start(Worker(_task, on_success=_on_success, on_error=_on_error))
+
+    # =============================================================
+    # Data Management (Export & Import)
+    # =============================================================
+
+    @Slot(str, result=bool)
+    def exportData(self, target_path: str = "") -> bool:
+        """
+        Exports 3D models metadata, categories tree, user preferences,
+        and licensing status to a portable JSON backup file.
+        """
+        import datetime
+        import json
+        from PySide6.QtWidgets import QFileDialog
+
+        file_path = target_path.strip()
+        if not file_path:
+            file_path, _ = QFileDialog.getSaveFileName(
+                None,
+                "Export Bilnov Gallery Data",
+                "bilnov_gallery_backup.json",
+                "JSON Files (*.json);;All Files (*.*)",
+            )
+
+        if not file_path:
+            return False
+
+        try:
+            # 1. Collect library scan
+            scan_res = self.lib.scan_library()
+            items = scan_res.get("items", [])
+            categories = self.lib.load_categories_tree()
+
+            # 2. Collect preferences
+            settings = QSettings("Bilnov", "BilnovGallery")
+            lang = str(settings.value("language", "en"))
+
+            # 3. Collect license state
+            trial_data = self.lic.get_or_create_trial()
+
+            backup_payload = {
+                "schema_version": "1.1.0",
+                "app": "Bilnov Gallery Desktop",
+                "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "preferences": {
+                    "language": lang,
+                },
+                "device_id": self.lic.device_id,
+                "trial": trial_data,
+                "license": {
+                    "is_licensed": self.lic.current_state.is_valid,
+                    "status_code": self.lic.current_state.status_code,
+                    "customer_name": self.lic.current_state.customer_name,
+                    "customer_email": self.lic.current_state.customer_email,
+                    "customer_phone": self.lic.current_state.customer_phone,
+                    "expires_at": self.lic.current_state.expires_at,
+                },
+                "total_models": len(items),
+                "categories": categories,
+                "models": items,
+            }
+
+            dest = Path(file_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest, "w", encoding="utf-8") as f:
+                json.dump(backup_payload, f, indent=2, ensure_ascii=False)
+
+            self.toast.emit("success", f"Successfully exported {len(items)} models to {dest.name}")
+            return True
+        except Exception as e:
+            self.toast.emit("error", f"Export failed: {str(e)}")
+            return False
+
+    @Slot(str, result=bool)
+    def importData(self, source_path: str = "") -> bool:
+        """
+        Imports and restores metadata, categories, and settings from a JSON backup.
+        """
+        import json
+        from PySide6.QtWidgets import QFileDialog
+
+        file_path = source_path.strip()
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(
+                None,
+                "Import Bilnov Gallery Data",
+                "",
+                "JSON Files (*.json);;All Files (*.*)",
+            )
+
+        if not file_path:
+            return False
+
+        src = Path(file_path)
+        if not src.exists():
+            self.toast.emit("error", f"Selected file does not exist: {src.name}")
+            return False
+
+        try:
+            with open(src, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not isinstance(data, dict):
+                self.toast.emit("error", "Invalid backup format: root must be a JSON object")
+                return False
+
+            # Restore preferences
+            prefs = data.get("preferences", {})
+            if "language" in prefs and prefs["language"] in ["en", "fr"]:
+                self.saveLanguagePreference(prefs["language"])
+
+            # Import/Restore models metadata into ./data folders if folders exist
+            models = data.get("models", [])
+            restored_count = 0
+            for item in models:
+                folder_rel = item.get("folder_path")
+                if folder_rel:
+                    folder_abs = DATA_DIR / folder_rel
+                    if folder_abs.exists() and folder_abs.is_dir():
+                        meta_file = folder_abs / "metadata.json"
+                        meta_content = {
+                            "title": item.get("title", folder_abs.name),
+                            "category": item.get("category", "Uncategorized"),
+                            "description": item.get("description", ""),
+                            "tags": item.get("tags", []),
+                            "author": item.get("author", "Bilnov"),
+                            "updated_at": item.get("updated_at", ""),
+                        }
+                        try:
+                            with open(meta_file, "w", encoding="utf-8") as mf:
+                                json.dump(meta_content, mf, indent=2, ensure_ascii=False)
+                            restored_count += 1
+                        except Exception:
+                            pass
+
+            # Refresh library and categories
+            self.loadLibrary()
+            self.loadCategories()
+
+            self.toast.emit("success", f"Import complete! Restored {restored_count} item metadata records from {src.name}")
+            return True
+        except Exception as e:
+            self.toast.emit("error", f"Import failed: {str(e)}")
+            return False

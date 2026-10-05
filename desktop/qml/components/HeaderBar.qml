@@ -27,7 +27,6 @@ Rectangle {
         anchors.leftMargin: 20
         anchors.rightMargin: 20
         spacing: 16
-        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
         ColumnLayout {
             spacing: 2
@@ -36,13 +35,11 @@ Rectangle {
                 color: Theme.textPrimary
                 font.pixelSize: 16
                 font.bold: true
-                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
             }
             Text {
                 text: root.subtitle
                 color: Theme.textMuted
                 font.pixelSize: 11
-                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
             }
         }
 
@@ -50,55 +47,9 @@ Rectangle {
             Layout.fillWidth: true
         }
 
-        // Language Switcher Selector (EN / FR / AR)
-        Rectangle {
-            width: 150
-            height: 34
-            radius: Theme.radiusMd
-            color: Theme.surfaceElevated
-            border.color: Theme.border
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 3
-                spacing: 2
-
-                Repeater {
-                    model: [
-                        { code: "en", label: "EN" },
-                        { code: "fr", label: "FR" },
-                        { code: "ar", label: "عربي" }
-                    ]
-
-                    delegate: Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        radius: 4
-                        color: I18n.currentLanguage === modelData.code ? Theme.primary : (langMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            color: I18n.currentLanguage === modelData.code ? "white" : Theme.textMuted
-                            font.pixelSize: 11
-                            font.bold: I18n.currentLanguage === modelData.code
-                        }
-
-                        MouseArea {
-                            id: langMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: I18n.setLanguage(modelData.code)
-                        }
-                    }
-                }
-            }
-        }
-
         // Quick Search Field (filters local ./data library)
         Rectangle {
-            width: 250
+            width: 280
             height: 36
             radius: Theme.radiusMd
             color: Theme.surfaceElevated
@@ -109,7 +60,6 @@ Rectangle {
                 anchors.leftMargin: 10
                 anchors.rightMargin: 10
                 spacing: 8
-                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                 FaIcon {
                     icon: Icons.search
@@ -124,7 +74,6 @@ Rectangle {
                     font.pixelSize: 12
                     selectByMouse: true
                     clip: true
-                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                     Text {
                         text: I18n.t("search_placeholder")
@@ -133,7 +82,6 @@ Rectangle {
                         visible: !headerSearchInput.text && !headerSearchInput.activeFocus
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
-                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
 
                     onTextChanged: {
@@ -170,7 +118,6 @@ Rectangle {
             RowLayout {
                 anchors.centerIn: parent
                 spacing: 6
-                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                 FaIcon {
                     icon: Icons.folderOpen
                     size: 12

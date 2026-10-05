@@ -50,24 +50,7 @@ jobs:
             dist/BilnovGallery.exe
             dist/BilnovGallery-Windows-Portable.zip
 
-  publish-release:
-    needs: [build-windows]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          merge-multiple: true
-
-      - name: Inspect release assets
-        run: |
-          ls -la release-assets
-
-      - name: Create GitHub Release
+      - name: Publish Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -76,4 +59,5 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            release-assets/*
+            dist/BilnovGallery.exe
+            dist/BilnovGallery-Windows-Portable.zip

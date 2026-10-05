@@ -85,7 +85,8 @@ Rectangle {
             Repeater {
                 model: [
                     { name: I18n.t("nav_gallery"), icon: Icons.cubes, index: 0 },
-                    { name: I18n.t("nav_categories"), icon: Icons.layerGroup, index: 1 }
+                    { name: I18n.t("nav_categories"), icon: Icons.layerGroup, index: 1 },
+                    { name: I18n.t("nav_settings"), icon: Icons.cog, index: 2 }
                 ]
 
                 delegate: Rectangle {
@@ -217,7 +218,10 @@ Rectangle {
                             if (Bridge.licenseStatusCode === "ACTIVE") {
                                 return Bridge.customerName || I18n.t("bound_to_workstation");
                             }
-                            if (Bridge.licenseStatusCode === "TRIAL" || Bridge.licenseStatusCode === "ACTIVE_OFFLINE") {
+                            if (Bridge.licenseStatusCode === "TRIAL") {
+                                return Bridge.trialDaysRemaining + "d " + Bridge.trialHoursRemaining + "h " + I18n.t("trial_remaining_suffix");
+                            }
+                            if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") {
                                 return Bridge.offlineDaysRemaining + " " + I18n.t("days_left");
                             }
                             return I18n.t("click_to_activate");
@@ -226,12 +230,11 @@ Rectangle {
                         font.pixelSize: 9
                         elide: Text.ElideRight
                         Layout.fillWidth: true
-                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
                 }
 
                 FaIcon {
-                    icon: I18n.isRTL ? Icons.chevronLeft : Icons.chevronRight
+                    icon: Icons.chevronRight
                     size: 9
                     iconColor: Theme.textMuted
                 }
@@ -242,7 +245,10 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.openLicenseDialog()
+                onClicked: {
+                    root.activeTab = 2
+                    root.tabSelected(2)
+                }
             }
         }
     }

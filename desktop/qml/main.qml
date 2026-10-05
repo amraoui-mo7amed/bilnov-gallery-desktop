@@ -33,23 +33,11 @@ ApplicationWindow {
         function onToast(type, msg) {
             toastWidget.showToast(type, msg)
         }
-        function onLicenseChanged() {
-            if (!Bridge.isLicensed && Bridge.licenseStatusCode === "NEEDS_ACTIVATION") {
-                activationDialog.open()
-            }
-        }
-    }
-
-    Component.onCompleted: {
-        if (!Bridge.isLicensed && Bridge.licenseStatusCode === "NEEDS_ACTIVATION") {
-            activationDialog.open()
-        }
     }
 
     RowLayout {
         anchors.fill: parent
         spacing: 0
-        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
         // Sidebar Navigation
         SidebarNav {
@@ -64,7 +52,7 @@ ApplicationWindow {
                 window.activeTab = index
             }
             onOpenLicenseDialog: {
-                activationDialog.open()
+                window.activeTab = 2
             }
         }
 
@@ -85,6 +73,7 @@ ApplicationWindow {
                     switch (window.activeTab) {
                         case 0: return I18n.t("header_gallery_title");
                         case 1: return I18n.t("header_categories_title");
+                        case 2: return I18n.t("header_settings_title");
                         default: return I18n.t("app_title");
                     }
                 }
@@ -92,6 +81,7 @@ ApplicationWindow {
                     switch (window.activeTab) {
                         case 0: return I18n.t("header_gallery_subtitle");
                         case 1: return I18n.t("header_categories_subtitle");
+                        case 2: return I18n.t("header_settings_subtitle");
                         default: return "";
                     }
                 }
@@ -100,7 +90,7 @@ ApplicationWindow {
                     libraryView.setSearchQuery(query)
                 }
                 onOpenLicenseDialog: {
-                    activationDialog.open()
+                    window.activeTab = 2
                 }
             }
 
@@ -126,17 +116,21 @@ ApplicationWindow {
                         Bridge.loadLibrary(libraryView.currentSearchQuery, catName)
                     }
                 }
+
+                SettingsView {
+                    id: settingsView
+                }
             }
         }
     }
 
-    // License Lockout Barrier (Task 2 & 5: Protected when license is invalid)
+    // License Lockout Barrier (Only shown when expired and not on settings tab)
     Rectangle {
         id: lockOverlay
         anchors.fill: parent
         z: 99990
         color: "#F0030712"
-        visible: !Bridge.isLicensed && activationDialog.opacity === 0
+        visible: !Bridge.isLicensed && window.activeTab !== 2
 
         ColumnLayout {
             anchors.centerIn: parent
@@ -176,7 +170,7 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
-                width: 190
+                width: 220
                 height: 40
                 radius: 8
                 color: activateBtnMouse.containsMouse ? Theme.primaryHover : Theme.primary
@@ -184,14 +178,13 @@ ApplicationWindow {
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 8
-                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                     FaIcon {
-                        icon: Icons.key
+                        icon: Icons.cog
                         size: 13
                         iconColor: "white"
                     }
                     Text {
-                        text: I18n.t("btn_enter_key")
+                        text: I18n.t("nav_settings")
                         color: "white"
                         font.pixelSize: 12
                         font.bold: true
@@ -203,7 +196,9 @@ ApplicationWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: activationDialog.open()
+                    onClicked: {
+                        window.activeTab = 2
+                    }
                 }
             }
         }
@@ -214,7 +209,7 @@ ApplicationWindow {
         id: lightbox
     }
 
-    // Global Licensing & Activation Modal (openapi.json)
+    // Global Licensing & Activation Modal (Available on demand)
     ActivationDialog {
         id: activationDialog
     }
