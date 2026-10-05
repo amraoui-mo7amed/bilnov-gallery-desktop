@@ -1,0 +1,599 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bilnov Gallery License Management & Desktop Client API",
+    "version": "1.0.0",
+    "description": "\n### Bilnov Gallery Desktop Client Integration & Licensing API\n\nThis REST API manages the complete licensing lifecycle for the Bilnov Gallery Desktop Client application.\n\n#### Comprehensive Desktop Client Workflow:\n1. **Administrative Access Control**:\n   - Access to this API is restricted exclusively to platform administrators and authorized client runtimes.\n   - Every request requires either an active administrator session or an `X-Admin-Key` header matching the platform secret.\n   - Interactive OpenAPI Swagger documentation (`/api/v1/docs`) is protected and viewable solely by authenticated administrators.\n\n2. **First Launch (Initial Activation)**:\n   - Derives a 64-character deterministic SHA-256 hardware identifier (`device_id`).\n   - Checks local storage file (`~/.zed_license.json`). If missing or corrupted, prompts the user with `ActivationDialog`.\n   - Forces the customer to provide their full legal Name, valid Email address, and Phone number before activating.\n   - Calls `POST /api/v1/license/activate`. On success, binds the license to the requesting hardware and updates the Customer record in the central database.\n   - Atomically writes license details, verification timestamp, and cryptographic HMAC-SHA256 signature to disk.\n\n3. **Subsequent Launches (Verification Handshake)**:\n   - Validates local file checksum and matches the local hardware fingerprint.\n   - Calls `POST /api/v1/license/verify` to synchronize status and obtain any administrator extensions or status updates.\n   - If the server is unreachable due to network failure, permits a **7-Day Offline Grace Period** (`OFFLINE_GRACE`).\n   - If the license was locally expired but extended on the server, online verification immediately re-activates the desktop client.\n\n4. **Runtime Heartbeat**:\n   - Background timer queries `POST /api/v1/license/heartbeat` periodically (every 4 hours).\n   - Immediately locks the UI if an administrator revokes or disables the license from the dashboard.\n\n5. **Cryptographic Anti-Tampering**:\n   - Every server response includes an HMAC-SHA256 signature generated using the server's private secret.\n   - Protects against proxy manipulation (MITM) and client-side memory alteration.\n"
+  },
+  "paths": {
+    "/api/v1/license/activate": {
+      "post": {
+        "operationId": "dashboard_api_api_activate_license",
+        "summary": "Activate license with mandatory customer details",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivateLicenseOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivateLicenseOut"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivateLicenseOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Activate a license on initial desktop client launch:\n1. Validates format of license key, hardware fingerprint, and customer details.\n2. Enforces mandatory customer details (Full Name min 2 chars, valid Email, Phone min 6 digits).\n3. Verifies license is active and unexpired.\n4. Binds the unique hardware device fingerprint to the license (or validates same machine).\n5. Updates the Customer profile record in the database with submitted contact info.\n6. Generates an HMAC-SHA256 digital signature to verify authenticity on client side.",
+        "tags": [
+          "Desktop License Lifecycle"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateLicenseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/license/verify": {
+      "post": {
+        "operationId": "dashboard_api_api_verify_license",
+        "summary": "Verify license validity and hardware binding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyLicenseOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyLicenseOut"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyLicenseOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Verify license status on application launch or manual refresh:\n1. Validates that the requesting hardware fingerprint matches the registered device_id.\n2. Verifies whether the license has been disabled or expired by administrators.\n3. Refreshes `last_verified_at` timestamp in the database.\n4. Returns updated expiration date (reflecting any administrator renewals) and signature.",
+        "tags": [
+          "Desktop License Lifecycle"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyLicenseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/license/heartbeat": {
+      "post": {
+        "operationId": "dashboard_api_api_license_heartbeat",
+        "summary": "Background heartbeat status check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Periodic background heartbeat check sent by desktop client timer (every 4 hours):\n- Confirms ongoing validity without interrupting the user workflow.\n- Instantly informs the desktop client if an administrator revoked or disabled the license.",
+        "tags": [
+          "Desktop License Lifecycle"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/license/status/{license_key}": {
+      "get": {
+        "operationId": "dashboard_api_api_license_status",
+        "summary": "Query license status by key",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "license_key",
+            "schema": {
+              "title": "License Key",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseStatusOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "description": "Administrative and diagnostic status inquiry for any license key in the system.",
+        "tags": [
+          "Diagnostic & Inquiry"
+        ],
+        "security": [
+          {
+            "AdminAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActivateLicenseOut": {
+        "properties": {
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "license_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Key"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature"
+          }
+        },
+        "required": [
+          "success",
+          "status_code",
+          "message",
+          "server_time"
+        ],
+        "title": "ActivateLicenseOut",
+        "type": "object"
+      },
+      "ActivateLicenseIn": {
+        "properties": {
+          "license_key": {
+            "description": "License key format ZED-XXXX-XXXX-XXXX",
+            "minLength": 10,
+            "title": "License Key",
+            "type": "string"
+          },
+          "device_id": {
+            "description": "Deterministic device hardware fingerprint",
+            "minLength": 16,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerDetailsSchema",
+            "description": "Mandatory customer details"
+          }
+        },
+        "required": [
+          "license_key",
+          "device_id",
+          "customer"
+        ],
+        "title": "ActivateLicenseIn",
+        "type": "object"
+      },
+      "CustomerDetailsSchema": {
+        "properties": {
+          "name": {
+            "description": "Customer full name",
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "email": {
+            "description": "Customer email address",
+            "minLength": 5,
+            "title": "Email",
+            "type": "string"
+          },
+          "phone": {
+            "description": "Customer contact phone number",
+            "minLength": 6,
+            "title": "Phone",
+            "type": "string"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "description": "Customer physical address",
+            "title": "Address"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "phone"
+        ],
+        "title": "CustomerDetailsSchema",
+        "type": "object"
+      },
+      "VerifyLicenseOut": {
+        "properties": {
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "license_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Key"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature"
+          }
+        },
+        "required": [
+          "success",
+          "status_code",
+          "message",
+          "server_time"
+        ],
+        "title": "VerifyLicenseOut",
+        "type": "object"
+      },
+      "VerifyLicenseIn": {
+        "properties": {
+          "license_key": {
+            "description": "License key",
+            "minLength": 10,
+            "title": "License Key",
+            "type": "string"
+          },
+          "device_id": {
+            "description": "Device fingerprint",
+            "minLength": 16,
+            "title": "Device Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "license_key",
+          "device_id"
+        ],
+        "title": "VerifyLicenseIn",
+        "type": "object"
+      },
+      "HeartbeatOut": {
+        "properties": {
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_expired": {
+            "title": "Is Expired",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature"
+          }
+        },
+        "required": [
+          "success",
+          "status_code",
+          "is_active",
+          "is_expired",
+          "server_time"
+        ],
+        "title": "HeartbeatOut",
+        "type": "object"
+      },
+      "HeartbeatIn": {
+        "properties": {
+          "license_key": {
+            "title": "License Key",
+            "type": "string"
+          },
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "license_key",
+          "device_id"
+        ],
+        "title": "HeartbeatIn",
+        "type": "object"
+      },
+      "LicenseStatusOut": {
+        "properties": {
+          "license_key": {
+            "title": "License Key",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_expired": {
+            "title": "Is Expired",
+            "type": "boolean"
+          },
+          "is_bound": {
+            "title": "Is Bound",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "status_display": {
+            "title": "Status Display",
+            "type": "string"
+          }
+        },
+        "required": [
+          "license_key",
+          "is_active",
+          "is_expired",
+          "is_bound",
+          "status_display"
+        ],
+        "title": "LicenseStatusOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "AdminAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Admin-Key"
+      }
+    }
+  },
+  "servers": []
+}

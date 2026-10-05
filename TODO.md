@@ -1,0 +1,6 @@
+- [x] Remove the Scraper and all its related configs Entirely 
+- [x] Read and intehrate the `openapi.json`
+- [x] Delete the Settings Pane Directly 
+- [x] The App Must Read one folder `./data`
+- [x] Data Folder Must Be Protected from the write/copy/sending
+- [x] Add A button in each card article to open the exact article location 

@@ -1,0 +1,111 @@
+"""
+Bilnov Gallery Desktop Application
+Built with PySide6 & QML (Qt Quick)
+"""
+
+import os
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtGui import QFontDatabase
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtWidgets import QApplication
+
+if getattr(sys, "frozen", False):
+    ROOT_DIR = Path(sys._MEIPASS)
+    base_dir = ROOT_DIR / "desktop"
+else:
+    base_dir = Path(__file__).resolve().parent
+    ROOT_DIR = base_dir.parent
+
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+if str(base_dir) not in sys.path:
+    sys.path.insert(0, str(base_dir))
+
+import config
+from backend.app_bridge import AppBridge
+from backend.image_provider import image_provider_instance
+
+
+def main():
+    # Set modern controls style
+    QQuickStyle.setStyle("Fusion")
+
+    # High-DPI scaling configuration
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+
+    app = QApplication(sys.argv)
+    app.setOrganizationName("Bilnov")
+    app.setApplicationName("Bilnov Gallery")
+    app.setApplicationDisplayName("Bilnov Gallery Desktop")
+
+    icon_path = base_dir / "assets" / "icon.png"
+    if icon_path.exists():
+        from PySide6.QtGui import QIcon
+        app.setWindowIcon(QIcon(str(icon_path)))
+
+    # Set native modern font
+    font = QFontDatabase.systemFont(QFontDatabase.GeneralFont)
+    font.setPointSize(11)
+    app.setFont(font)
+
+    # Register Font Awesome 6 Free fonts
+    fonts_dir = base_dir / "assets" / "fonts"
+    if fonts_dir.exists():
+        QFontDatabase.addApplicationFont(str(fonts_dir / "fa-solid-900.ttf"))
+        QFontDatabase.addApplicationFont(str(fonts_dir / "fa-regular-400.ttf"))
+
+    # Initialize PySide6 backend bridge
+    bridge = AppBridge()
+
+    # Register singleton for QML
+    qmlRegisterSingletonInstance(AppBridge, "CGTips", 1, 0, "Bridge", bridge)
+    qmlRegisterSingletonInstance(AppBridge, "Bilnov", 1, 0, "Bridge", bridge)
+
+    # Create QML Application Engine
+    engine = QQmlApplicationEngine()
+
+    # Register custom image provider
+    engine.addImageProvider("bilnov", image_provider_instance)
+    engine.addImageProvider("cgtips", image_provider_instance)
+
+    # Base QML directory
+    qml_dir = base_dir / "qml"
+
+    # Add QML import paths
+    engine.addImportPath(str(qml_dir))
+
+    # Expose bridge to root context as well
+    engine.rootContext().setContextProperty("bridge", bridge)
+
+    # Load root QML file
+    qml_file = qml_dir / "main.qml"
+    engine.load(os.fspath(qml_file))
+
+    if not engine.rootObjects():
+        print("Error: Could not load QML main file.", file=sys.stderr)
+        sys.exit(-1)
+
+    # Initial License verification and data loading from ./data
+    bridge.verifyLicense()
+    bridge.loadCategories()
+    bridge.loadLibrary()
+
+    def clean_shutdown():
+        if hasattr(bridge, "heartbeat_timer"):
+            bridge.heartbeat_timer.stop()
+        from PySide6.QtCore import QThreadPool
+        QThreadPool.globalInstance().waitForDone(500)
+
+    app.aboutToQuit.connect(clean_shutdown)
+
+    ret = app.exec()
+    del engine
+    sys.exit(ret)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,390 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+import CGTips 1.0
+import ".."
+import "../components"
+
+Item {
+    id: root
+    signal openGallery(var images, string title)
+
+    property string selectedCategory: "all"
+    property string currentSearchQuery: ""
+
+    function setSearchQuery(q) {
+        root.currentSearchQuery = q;
+        libFilterInput.text = q;
+        Bridge.loadLibrary(q, root.selectedCategory);
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 20
+        spacing: 14
+
+        // Top Filter Bar & Controls
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
+
+            // Search filter field
+            Rectangle {
+                Layout.fillWidth: true
+                height: 40
+                radius: Theme.radiusMd
+                color: Theme.surface
+                border.color: libFilterInput.activeFocus ? Theme.primary : Theme.border
+                border.width: 1
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 8
+
+                    FaIcon {
+                        icon: Icons.search
+                        size: 12
+                        iconColor: Theme.textMuted
+                    }
+
+                    TextInput {
+                        id: libFilterInput
+                        Layout.fillWidth: true
+                        color: Theme.textPrimary
+                        font.pixelSize: 12
+                        selectByMouse: true
+                        clip: true
+
+                        Text {
+                            text: "Filter models by name, category, or file..."
+                            color: Theme.textMuted
+                            font.pixelSize: 12
+                            visible: !libFilterInput.text && !libFilterInput.activeFocus
+                        }
+
+                        onTextChanged: {
+                            root.currentSearchQuery = text.trim();
+                            Bridge.loadLibrary(text.trim(), root.selectedCategory);
+                        }
+                    }
+
+                    FaIcon {
+                        icon: Icons.times
+                        size: 11
+                        iconColor: Theme.textMuted
+                        visible: libFilterInput.text.length > 0
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                libFilterInput.text = ""
+                                root.currentSearchQuery = ""
+                                Bridge.loadLibrary("", root.selectedCategory);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Category Filter Dropdown / Combo
+            Rectangle {
+                width: 160
+                height: 40
+                radius: Theme.radiusMd
+                color: Theme.surface
+                border.color: Theme.border
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    FaIcon {
+                        icon: Icons.filter
+                        size: 11
+                        iconColor: Theme.primaryLight
+                    }
+
+                    Text {
+                        text: root.selectedCategory === "all" ? "All Categories" : root.selectedCategory
+                        color: Theme.textPrimary
+                        font.pixelSize: 12
+                        font.bold: true
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    FaIcon {
+                        icon: Icons.chevronDown
+                        size: 9
+                        iconColor: Theme.textMuted
+                    }
+                }
+
+                MouseArea {
+                    id: catMenuMouse
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: catMenu.open()
+                }
+
+                Menu {
+                    id: catMenu
+                    y: 44
+                    width: 180
+
+                    MenuItem {
+                        text: "All Categories"
+                        onTriggered: {
+                            root.selectedCategory = "all";
+                            Bridge.loadLibrary(root.currentSearchQuery, "all");
+                        }
+                    }
+
+                    Repeater {
+                        model: Bridge.categories
+                        MenuItem {
+                            text: modelData.name || modelData.title
+                            onTriggered: {
+                                var cat = modelData.name || modelData.title;
+                                root.selectedCategory = cat;
+                                Bridge.loadLibrary(root.currentSearchQuery, cat);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Stats info pill
+            Rectangle {
+                width: 130
+                height: 40
+                radius: Theme.radiusMd
+                color: Theme.surface
+                border.color: Theme.border
+
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: 6
+                    FaIcon {
+                        icon: Icons.cubes
+                        size: 13
+                        iconColor: Theme.primaryLight
+                    }
+                    Text {
+                        text: Bridge.libraryTotal + " Assets"
+                        color: Theme.primaryLight
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+                }
+            }
+
+            // Open Folder in Finder Button
+            Rectangle {
+                width: 40
+                height: 40
+                radius: Theme.radiusMd
+                color: openDirMouse.containsMouse ? Theme.surfaceElevated : Theme.surface
+                border.color: Theme.border
+
+                FaIcon {
+                    anchors.centerIn: parent
+                    icon: Icons.folderOpen
+                    size: 13
+                    iconColor: Theme.primaryLight
+                }
+
+                MouseArea {
+                    id: openDirMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Bridge.openFolder("")
+                }
+            }
+
+            // Reload Button
+            Rectangle {
+                width: 40
+                height: 40
+                radius: Theme.radiusMd
+                color: reloadMouse.containsMouse ? Theme.surfaceElevated : Theme.surface
+                border.color: Theme.border
+
+                FaIcon {
+                    anchors.centerIn: parent
+                    icon: Icons.rotate
+                    size: 13
+                    iconColor: Theme.textPrimary
+                }
+
+                MouseArea {
+                    id: reloadMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Bridge.loadLibrary(root.currentSearchQuery, root.selectedCategory);
+                        Bridge.loadCategories();
+                    }
+                }
+            }
+        }
+
+        // Active filter chip (if category selected)
+        RowLayout {
+            visible: root.selectedCategory !== "all"
+            Layout.fillWidth: true
+            spacing: 8
+
+            Rectangle {
+                height: 26
+                width: chipRow.implicitWidth + 16
+                radius: 13
+                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2)
+                border.color: Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.4)
+
+                RowLayout {
+                    id: chipRow
+                    anchors.centerIn: parent
+                    spacing: 6
+
+                    Text {
+                        text: "Category: " + root.selectedCategory
+                        color: Theme.primaryLight
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+
+                    FaIcon {
+                        icon: Icons.times
+                        size: 9
+                        iconColor: Theme.primaryLight
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.selectedCategory = "all";
+                        Bridge.loadLibrary(root.currentSearchQuery, "all");
+                    }
+                }
+            }
+        }
+
+        // Gallery Grid / States
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            BusyIndicator {
+                anchors.centerIn: parent
+                running: Bridge.libraryLoading
+                visible: Bridge.libraryLoading
+            }
+
+            // Empty State
+            ColumnLayout {
+                anchors.centerIn: parent
+                visible: !Bridge.libraryLoading && Bridge.libraryItems.length === 0
+                spacing: 16
+
+                Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 72
+                    height: 72
+                    radius: 36
+                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                    border.color: Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.25)
+
+                    FaIcon {
+                        anchors.centerIn: parent
+                        icon: Icons.box
+                        size: 30
+                        iconColor: Theme.primaryLight
+                    }
+                }
+
+                Text {
+                    text: "No 3D Models in ./data"
+                    color: Theme.textPrimary
+                    font.pixelSize: 17
+                    font.bold: true
+                    Layout.alignment: Qt.AlignHCenter
+                }
+
+                Text {
+                    text: "The application reads exclusively from the ./data folder.\nPlace your 3D models (.skp, .obj, .blend) and preview images inside ./data."
+                    color: Theme.textMuted
+                    font.pixelSize: 12
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.alignment: Qt.AlignHCenter
+                }
+
+                Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 170
+                    height: 38
+                    radius: Theme.radiusSm
+                    color: emptyOpenMouse.containsMouse ? Theme.primaryHover : Theme.primary
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        FaIcon {
+                            icon: Icons.folderOpen
+                            size: 12
+                            iconColor: "white"
+                        }
+                        Text {
+                            text: "Open ./data Folder"
+                            color: "white"
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+                    }
+
+                    MouseArea {
+                        id: emptyOpenMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Bridge.openFolder("")
+                    }
+                }
+            }
+
+            // Items Grid
+            GridView {
+                id: libGrid
+                anchors.fill: parent
+                visible: !Bridge.libraryLoading && Bridge.libraryItems.length > 0
+                clip: true
+                cellWidth: Math.floor(libGrid.width / 3)
+                cellHeight: 310
+                model: Bridge.libraryItems
+
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
+
+                delegate: Item {
+                    width: libGrid.cellWidth
+                    height: libGrid.cellHeight
+
+                    ModelCard {
+                        anchors.fill: parent
+                        anchors.margins: 7
+                        itemData: modelData
+                        onOpenGallery: root.openGallery(modelData.images_full, modelData.title)
+                    }
+                }
+            }
+        }
+    }
+}
