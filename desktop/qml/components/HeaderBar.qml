@@ -18,7 +18,7 @@ Rectangle {
     border.width: 1
 
     property string title: "3D Asset Gallery"
-    property string subtitle: "Browse models and assets in ./data"
+    property string subtitle: "Browse models and assets in storage"
     signal searchRequested(string query)
     signal openLicenseDialog()
 

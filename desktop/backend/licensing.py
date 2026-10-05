@@ -145,11 +145,23 @@ class LicenseManager:
         self.device_id = get_deterministic_device_id()
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "BilnovGalleryDesktop/1.0.0"})
-        if ADMIN_KEY:
-            self.session.headers.update({"X-Admin-Key": ADMIN_KEY})
+        self.admin_key = ADMIN_KEY
+        if self.admin_key:
+            self.session.headers.update({"X-Admin-Key": self.admin_key})
 
         self.current_state = LicenseState(device_id=self.device_id)
         self.trial_details: Dict[str, Any] = {}
+
+    def set_admin_key(self, admin_key: str):
+        """Sets and persists an optional X-Admin-Key for API server authentication."""
+        self.admin_key = admin_key.strip()
+        if self.admin_key:
+            self.session.headers.update({"X-Admin-Key": self.admin_key})
+        elif "X-Admin-Key" in self.session.headers:
+            del self.session.headers["X-Admin-Key"]
+        local_data = self.load_local_license() or {}
+        local_data["admin_key"] = self.admin_key
+        self.save_local_license(local_data)
 
     # -------------------------------------------------------------
     # Disk Storage Helpers (Atomic read/write ~/.zed_license.json)
@@ -163,6 +175,11 @@ class LicenseManager:
         try:
             with open(self.license_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+
+            # Load persisted admin key if not already set via environment
+            if not self.admin_key and data.get("admin_key"):
+                self.admin_key = data.get("admin_key")
+                self.session.headers.update({"X-Admin-Key": self.admin_key})
 
             # Anti-tampering check: verify checksum
             saved_checksum = data.get("checksum")
@@ -392,6 +409,10 @@ class LicenseManager:
                 signature=data.get("signature"),
             )
             return True, data.get("message", "License successfully activated!")
+        elif resp.status_code == 401:
+            msg = "Licensing server returned HTTP 401 (Unauthorized). Please provide a valid Admin / API key or contact support (+213776139475)."
+            logger.warning(msg)
+            return False, msg
         else:
             msg = data.get("message") or f"Activation rejected (HTTP {resp.status_code})"
             return False, msg
@@ -492,6 +513,9 @@ class LicenseManager:
                     signature=local_data.get("signature"),
                 )
                 return True, "License verified"
+            elif resp.status_code == 401:
+                logger.warning("Licensing server returned HTTP 401 (Unauthorized). Entering offline grace / trial mode.")
+                server_online = False
             else:
                 msg = data.get("message", "License disabled or expired by administrator")
                 self.current_state = LicenseState(
@@ -635,6 +659,9 @@ class LicenseManager:
                 signature=local_data.get("signature"),
             )
             return True, "Heartbeat OK"
+        elif resp.status_code == 401:
+            logger.warning("Heartbeat returned HTTP 401 (Unauthorized). Skipping revocation; checking offline grace.")
+            return self.verify_license()
         else:
             msg = data.get("message", "License validation failed on heartbeat")
             self.current_state = LicenseState(

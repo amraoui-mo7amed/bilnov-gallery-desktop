@@ -18,6 +18,8 @@ Item {
     readonly property string rotate: "\uf021"
     readonly property string download: "\uf019"
     readonly property string upload: "\uf093"
+    readonly property string plus: "\uf067"
+    readonly property string star: "\uf005"
     readonly property string phone: "\uf095"
     readonly property string image: "\uf03e"
     readonly property string images: "\uf302"

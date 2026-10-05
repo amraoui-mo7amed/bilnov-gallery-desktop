@@ -10,20 +10,26 @@ from decouple import config
 if getattr(sys, "frozen", False):
     if sys.platform == "darwin":
         app_dir = Path(sys.executable).resolve().parent.parent.parent
-        if (Path.cwd() / "data").exists():
+        if (Path.cwd() / "storage").exists() or (Path.cwd() / "data").exists():
             BASE_DIR = Path.cwd()
         else:
             BASE_DIR = app_dir.parent
     else:
-        if (Path.cwd() / "data").exists():
+        if (Path.cwd() / "storage").exists() or (Path.cwd() / "data").exists():
             BASE_DIR = Path.cwd()
         else:
             BASE_DIR = Path(sys.executable).resolve().parent
 else:
     BASE_DIR = Path(__file__).resolve().parent
 
-# The one and only data folder the app reads
-DEFAULT_DATA_DIR = str(BASE_DIR / "data")
+# The primary asset library folder the app reads (defaults to ./storage)
+if (BASE_DIR / "storage").exists():
+    DEFAULT_DATA_DIR = str(BASE_DIR / "storage")
+elif (BASE_DIR / "data").exists():
+    DEFAULT_DATA_DIR = str(BASE_DIR / "data")
+else:
+    DEFAULT_DATA_DIR = str(BASE_DIR / "storage")
+
 DATA_DIR = Path(config("DATA_DIR", default=DEFAULT_DATA_DIR)).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 

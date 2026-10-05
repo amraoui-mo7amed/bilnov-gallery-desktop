@@ -300,8 +300,20 @@ Flickable {
         // ---------------------------------------------------------
         // Card 3: Workstation License & Customer Details
         // ---------------------------------------------------------
+        GridLayout {
+        Layout.fillWidth: true
+        columns: contentCol.width >= 720 ? 2 : 1
+        columnSpacing: 16
+        rowSpacing: 16
+
+        // Left: Workstation License & Customer Details
         Rectangle {
             Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            Layout.minimumWidth: 0
+            Layout.fillHeight: true
+            Layout.alignment: Qt.AlignTop
+            clip: true
             radius: Theme.radiusMd
             color: Theme.surface
             border.color: Theme.border
@@ -310,11 +322,14 @@ Flickable {
 
             ColumnLayout {
                 id: licenseCol
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 16
                 spacing: 16
 
                 RowLayout {
+                    Layout.fillWidth: true
                     spacing: 10
                     FaIcon {
                         icon: Icons.shield
@@ -322,15 +337,20 @@ Flickable {
                         iconColor: Theme.primaryLight
                     }
                     ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: 2
                         Text {
                             text: I18n.t("section_license_title")
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                             color: Theme.textPrimary
                             font.pixelSize: 14
                             font.bold: true
                         }
                         Text {
                             text: I18n.t("section_license_desc")
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                             color: Theme.textMuted
                             font.pixelSize: 11
                         }
@@ -529,16 +549,29 @@ Flickable {
                     }
                 }
 
-                // Divider
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Theme.border
-                }
+            }
+        }
 
-                // Activation Input Form
+        // Right: Activate or Change License
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            Layout.minimumWidth: 0
+            Layout.fillHeight: true
+            Layout.alignment: Qt.AlignTop
+            clip: true
+            radius: Theme.radiusMd
+            color: Theme.surface
+            border.color: Theme.border
+            border.width: 1
+            implicitHeight: activateCol.implicitHeight + 32
+
                 ColumnLayout {
-                    Layout.fillWidth: true
+                    id: activateCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
                     spacing: 10
 
                     Text {
@@ -549,6 +582,8 @@ Flickable {
                     }
                     Text {
                         text: I18n.t("activate_section_desc")
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                         color: Theme.textMuted
                         font.pixelSize: 11
                     }
@@ -741,6 +776,49 @@ Flickable {
                                 }
                             }
                         }
+
+                        // API / Admin Key Input (Optional)
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.columnSpan: 2
+                            spacing: 4
+                            Text {
+                                text: I18n.t("admin_key_label")
+                                color: Theme.textSecondary
+                                font.pixelSize: 11
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 36
+                                radius: 6
+                                color: Theme.surfaceElevated
+                                border.color: adminKeyInput.activeFocus ? Theme.primary : Theme.border
+                                TextInput {
+                                    id: adminKeyInput
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: Theme.textPrimary
+                                    font.pixelSize: 12
+                                    font.family: "Monospace"
+                                    selectByMouse: true
+                                    text: Bridge.adminKey
+                                    onEditingFinished: {
+                                        Bridge.setAdminKey(text.trim())
+                                    }
+                                    Text {
+                                        text: I18n.t("admin_key_placeholder")
+                                        color: Theme.textMuted
+                                        font.pixelSize: 12
+                                        font.family: "Monospace"
+                                        visible: !adminKeyInput.text && !adminKeyInput.activeFocus
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Activate Button
@@ -805,224 +883,6 @@ Flickable {
         }
 
         // ---------------------------------------------------------
-        // Card 4: Data Management (Export & Import)
-        // ---------------------------------------------------------
-        Rectangle {
-            Layout.fillWidth: true
-            radius: Theme.radiusMd
-            color: Theme.surface
-            border.color: Theme.border
-            border.width: 1
-            implicitHeight: backupCol.implicitHeight + 32
-
-            ColumnLayout {
-                id: backupCol
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 16
-
-                RowLayout {
-                    spacing: 10
-                    FaIcon {
-                        icon: Icons.database
-                        size: 15
-                        iconColor: Theme.primaryLight
-                    }
-                    ColumnLayout {
-                        spacing: 2
-                        Text {
-                            text: I18n.t("section_backup_title")
-                            color: Theme.textPrimary
-                            font.pixelSize: 14
-                            font.bold: true
-                        }
-                        Text {
-                            text: I18n.t("section_backup_desc")
-                            color: Theme.textMuted
-                            font.pixelSize: 11
-                        }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 16
-
-                    // Export Box
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: exportInnerCol.implicitHeight + 24
-                        radius: Theme.radiusMd
-                        color: Theme.surfaceElevated
-                        border.color: Theme.border
-
-                        ColumnLayout {
-                            id: exportInnerCol
-                            anchors.fill: parent
-                            anchors.margins: 14
-                            spacing: 10
-
-                            RowLayout {
-                                spacing: 8
-                                FaIcon {
-                                    icon: Icons.download
-                                    size: 13
-                                    iconColor: Theme.primaryLight
-                                }
-                                Text {
-                                    text: I18n.t("export_backup_btn")
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 13
-                                    font.bold: true
-                                }
-                            }
-
-                            Text {
-                                text: I18n.t("export_backup_desc")
-                                color: Theme.textMuted
-                                font.pixelSize: 11
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Rectangle {
-                                width: 140
-                                height: 34
-                                radius: 6
-                                color: expMouse.containsMouse ? Theme.primaryHover : Theme.primary
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: I18n.t("export_backup_btn")
-                                    color: "white"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-
-                                MouseArea {
-                                    id: expMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Bridge.exportData("")
-                                }
-                            }
-                        }
-                    }
-
-                    // Import Box
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: importInnerCol.implicitHeight + 24
-                        radius: Theme.radiusMd
-                        color: Theme.surfaceElevated
-                        border.color: Theme.border
-
-                        ColumnLayout {
-                            id: importInnerCol
-                            anchors.fill: parent
-                            anchors.margins: 14
-                            spacing: 10
-
-                            RowLayout {
-                                spacing: 8
-                                FaIcon {
-                                    icon: Icons.sync
-                                    size: 13
-                                    iconColor: Theme.primaryLight
-                                }
-                                Text {
-                                    text: I18n.t("import_backup_btn")
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 13
-                                    font.bold: true
-                                }
-                            }
-
-                            Text {
-                                text: I18n.t("import_backup_desc")
-                                color: Theme.textMuted
-                                font.pixelSize: 11
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                            }
-
-                            RowLayout {
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 150
-                                    height: 34
-                                    radius: 6
-                                    color: impMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surface
-                                    border.color: Theme.primary
-                                    border.width: 1
-
-                                    RowLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        FaIcon {
-                                            icon: Icons.upload
-                                            size: 11
-                                            iconColor: Theme.primaryLight
-                                        }
-                                        Text {
-                                            text: I18n.t("import_backup_btn")
-                                            color: Theme.primaryLight
-                                            font.pixelSize: 11
-                                            font.bold: true
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: impMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: Bridge.importData("")
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: 150
-                                    height: 34
-                                    radius: 6
-                                    color: impFolderMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : Theme.surface
-                                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
-                                    border.width: 1
-
-                                    RowLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        FaIcon {
-                                            icon: Icons.folder
-                                            size: 11
-                                            iconColor: Theme.primaryLight
-                                        }
-                                        Text {
-                                            text: I18n.t("import_folder_btn")
-                                            color: Theme.textSecondary
-                                            font.pixelSize: 11
-                                            font.bold: true
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: impFolderMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: Bridge.importFolder()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---------------------------------------------------------
         // Card 5: Application Details (Bilnov, +213776139475, Correct Version)
         // ---------------------------------------------------------
         Rectangle {
@@ -1075,7 +935,7 @@ Flickable {
                             font.pixelSize: 10
                         }
                         Text {
-                            text: Bridge.appVersion || "v1.2.1"
+                            text: Bridge.appVersion || "v1.3.0"
                             color: Theme.primaryLight
                             font.pixelSize: 12
                             font.bold: true

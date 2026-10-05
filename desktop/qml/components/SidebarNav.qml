@@ -77,7 +77,7 @@ Rectangle {
             color: Theme.border
         }
 
-        // Navigation Items (Clean Gallery & Categories only; Scraper & Settings deleted)
+        // Navigation Items (Gallery & Categories at top)
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
@@ -85,8 +85,7 @@ Rectangle {
             Repeater {
                 model: [
                     { name: I18n.t("nav_gallery"), icon: Icons.cubes, index: 0 },
-                    { name: I18n.t("nav_categories"), icon: Icons.layerGroup, index: 1 },
-                    { name: I18n.t("nav_settings"), icon: Icons.cog, index: 2 }
+                    { name: I18n.t("nav_categories"), icon: Icons.layerGroup, index: 1 }
                 ]
 
                 delegate: Rectangle {
@@ -142,8 +141,68 @@ Rectangle {
             }
         }
 
+        // Flexible vertical spacer pushing Settings to the bottom
         Item {
             Layout.fillHeight: true
+        }
+
+        // Bottom Divider
+        Rectangle {
+            Layout.fillWidth: true
+            height: 1
+            color: Theme.border
+        }
+
+        // Settings Navigation Item (Pinned at bottom)
+        Rectangle {
+            id: settingsNavItem
+            Layout.fillWidth: true
+            height: 42
+            radius: Theme.radiusMd
+            color: {
+                if (root.activeTab === 2) {
+                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2);
+                }
+                return settingsMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent";
+            }
+            border.color: root.activeTab === 2 ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4) : "transparent"
+            border.width: 1
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 12
+                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
+
+                FaIcon {
+                    icon: Icons.cog
+                    size: 14
+                    iconColor: root.activeTab === 2 ? Theme.primaryLight : (settingsMouse.containsMouse ? Theme.textPrimary : Theme.textSecondary)
+                }
+
+                Text {
+                    text: I18n.t("nav_settings")
+                    color: root.activeTab === 2 ? Theme.primaryLight : (settingsMouse.containsMouse ? Theme.textPrimary : Theme.textSecondary)
+                    font.pixelSize: 12
+                    font.weight: root.activeTab === 2 ? Font.Bold : Font.Normal
+                    Layout.fillWidth: true
+                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
+                }
+            }
+
+            MouseArea {
+                id: settingsMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    root.activeTab = 2
+                    root.tabSelected(2)
+                }
+            }
         }
     }
 }

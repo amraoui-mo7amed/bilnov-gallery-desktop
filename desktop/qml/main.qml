@@ -106,6 +106,7 @@ ApplicationWindow {
                     onOpenGallery: function(images, title) {
                         lightbox.open(images, title, 0)
                     }
+                    onAddItemRequested: addItemDialog.open()
                 }
 
                 CategoriesView {
@@ -212,6 +213,11 @@ ApplicationWindow {
     // Global Licensing & Activation Modal (Available on demand)
     ActivationDialog {
         id: activationDialog
+    }
+
+    // Add Item to Library Modal
+    AddItemDialog {
+        id: addItemDialog
     }
 
     // Global Toast Notification

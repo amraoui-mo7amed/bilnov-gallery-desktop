@@ -1,7 +1,7 @@
 """
 Bilnov Gallery Library Manager
-Reads exclusively from one folder: ./data
-Guarantees ./data is strictly protected against write, delete, copy, and sending operations.
+Reads from local asset library: ./storage (or ./data)
+Guarantees asset storage is strictly protected against write, delete, copy, and sending operations.
 """
 
 import json
@@ -272,25 +272,8 @@ class LibraryManager:
         # Sort newest first
         items.sort(key=lambda x: x["modified_at"], reverse=True)
 
-        # Fallback: if no category folders were found, check categories.json in ./data
+        # Categories are derived strictly from the real content of the storage folder
         categories_list = sorted(list(categories_set))
-        if not categories_list:
-            categories_file = self.base_dir / "categories.json"
-            if categories_file.exists():
-                try:
-                    with open(categories_file, encoding="utf-8") as cf:
-                        raw_data = json.load(cf)
-                        for item in raw_data:
-                            name = (
-                                item.get("name")
-                                or (item.get("heading") and item["heading"].get("name"))
-                                or item.get("title")
-                            )
-                            if name:
-                                categories_set.add(name)
-                    categories_list = sorted(list(categories_set))
-                except Exception:
-                    pass
 
         return {
             "items": items,
@@ -306,38 +289,15 @@ class LibraryManager:
         }
 
     def load_categories_tree(self) -> List[Dict[str, Any]]:
-        """Loads categories hierarchy from ./data/categories.json or discovered folder structure."""
-        categories_file = self.base_dir / "categories.json"
-        if categories_file.exists():
-            try:
-                with open(categories_file, encoding="utf-8") as f:
-                    raw_cats = json.load(f)
-                    tree = []
-                    for cat in raw_cats:
-                        heading = cat.get("heading") or {}
-                        cat_name = cat.get("name") or heading.get("name") or cat.get("title") or "Category"
-                        subs = []
-                        for sub in cat.get("subcategories", []):
-                            sub_name = sub.get("name") or sub.get("title") or "Subcategory"
-                            subs.append({"name": sub_name, "title": sub_name})
-                        tree.append({
-                            "name": cat_name,
-                            "title": cat_name,
-                            "subcategories": subs,
-                        })
-                    if tree:
-                        return tree
-            except Exception as e:
-                logger.warning("Could not read categories.json: %s", e)
-
-        # Dynamically build categories from ./data
+        """Builds the categories hierarchy strictly from the items actually present in storage."""
         lib_data = self.scan_library()
         cat_map: Dict[str, Set[str]] = {}
+        cat_counts: Dict[str, int] = {}
         for itm in lib_data["items"]:
             c = itm.get("category") or "General"
             s = itm.get("subcategory") or ""
-            if c not in cat_map:
-                cat_map[c] = set()
+            cat_map.setdefault(c, set())
+            cat_counts[c] = cat_counts.get(c, 0) + 1
             if s:
                 cat_map[c].add(s)
 
@@ -346,9 +306,81 @@ class LibraryManager:
             tree.append({
                 "name": cat_name,
                 "title": cat_name,
+                "count": cat_counts.get(cat_name, 0),
                 "subcategories": [{"name": sub, "title": sub} for sub in sorted(subs)],
             })
         return tree
+
+    def add_item(
+        self,
+        title: str,
+        image_paths: List[str],
+        model_paths: List[str],
+        category: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Creates a new article in the library:
+          storage/<Category>/<Title>/image_1.ext (thumbnail), image_2.ext, ...
+          storage/<Category>/<Title>/model/<sketchup files>
+          storage/<Category>/<Title>/meta.json
+        The first image provided is always used as the thumbnail.
+        """
+        import shutil
+        from datetime import datetime
+
+        clean_title = (title or "").strip()
+        if not clean_title:
+            raise ValueError("Article name is required")
+
+        imgs = [Path(p) for p in image_paths if p and Path(p).is_file()]
+        models = [Path(p) for p in model_paths if p and Path(p).is_file()]
+        imgs = [p for p in imgs if p.suffix.lower() in SUPPORTED_IMAGE_EXTS]
+        if not imgs:
+            raise ValueError("At least one image is required")
+        if not models:
+            raise ValueError("At least one SketchUp / model file is required")
+
+        def _safe(name: str) -> str:
+            s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name).strip().strip(".")
+            return s or "Untitled"
+
+        cat_name = _safe(category.strip()) if category and category.strip() else "My Models"
+        parent = self.base_dir / cat_name
+        folder_name = _safe(clean_title)
+        target = parent / folder_name
+        counter = 1
+        while target.exists():
+            target = parent / f"{folder_name}_{counter}"
+            counter += 1
+        target.mkdir(parents=True, exist_ok=False)
+
+        try:
+            # Images: numbered so the first one sorts first and becomes the thumbnail
+            for idx, img in enumerate(imgs, start=1):
+                shutil.copy2(img, target / f"image_{idx}{img.suffix.lower()}")
+
+            model_dir = target / "model"
+            model_dir.mkdir(exist_ok=True)
+            for m in models:
+                dest = model_dir / m.name
+                n = 1
+                while dest.exists():
+                    dest = model_dir / f"{m.stem}_{n}{m.suffix}"
+                    n += 1
+                shutil.copy2(m, dest)
+
+            self.save_meta(target, {
+                "title": clean_title,
+                "category": cat_name,
+                "thumbnail": f"image_1{imgs[0].suffix.lower()}",
+                "created_at": datetime.now().isoformat(),
+                "source": "user",
+            })
+        except Exception:
+            shutil.rmtree(target, ignore_errors=True)
+            raise
+
+        return {"folder_path": str(target.relative_to(self.base_dir)), "title": clean_title}
 
 
 library_manager = LibraryManager()

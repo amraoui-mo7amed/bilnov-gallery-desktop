@@ -10,6 +10,8 @@ datas = [
     (str(ROOT_DIR / 'desktop' / 'qml'), 'desktop/qml'),
     (str(ROOT_DIR / 'desktop' / 'assets'), 'desktop/assets'),
 ]
+if (ROOT_DIR / 'storage').exists():
+    datas.append((str(ROOT_DIR / 'storage'), 'storage'))
 if (ROOT_DIR / 'data').exists():
     datas.append((str(ROOT_DIR / 'data'), 'data'))
 

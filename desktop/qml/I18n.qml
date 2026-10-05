@@ -50,13 +50,13 @@ Item {
 
             // Header Bar
             "header_gallery_title": "3D Asset Gallery",
-            "header_gallery_subtitle": "Browse models and assets in ./data",
+            "header_gallery_subtitle": "Browse models and assets in storage",
             "header_categories_title": "Categories & Taxonomy",
-            "header_categories_subtitle": "Inspect local taxonomy structure discovered in ./data",
+            "header_categories_subtitle": "Categories discovered from the folders in storage",
             "header_settings_title": "Settings & Details",
-            "header_settings_subtitle": "Manage language, workstation license, trial status, and data backup",
-            "search_placeholder": "Search ./data models...",
-            "open_storage_btn": "Open ./data",
+            "header_settings_subtitle": "Manage language, workstation license and trial status",
+            "search_placeholder": "Search storage models...",
+            "open_storage_btn": "Open Storage",
 
             // Gallery / Library View
             "filter_placeholder": "Filter models by name, category, or file...",
@@ -64,9 +64,9 @@ Item {
             "category_prefix": "Category: ",
             "assets_count": "Assets",
             "models_count": "Models",
-            "empty_title": "No 3D Models in ./data",
-            "empty_desc": "The application reads exclusively from the ./data folder.\nPlace your 3D models (.skp, .obj, .blend) and preview images inside ./data.",
-            "open_folder_btn": "Open ./data Folder",
+            "empty_title": "No 3D Models in storage",
+            "empty_desc": "The application reads directly from the storage folder.\nPlace your 3D models (.skp, .obj, .blend) and preview images inside storage.",
+            "open_folder_btn": "Open storage Folder",
 
             // Categories View
             "categories_title": "Local Asset Taxonomy",
@@ -76,6 +76,25 @@ Item {
 
             // Model Card
             "open_location": "Open Location",
+            "add_item_btn": "Add Item",
+            "add_item_title": "Add Item to Library",
+            "add_item_subtitle": "Upload images, name your article and attach SketchUp files",
+            "add_name_label": "Article Name",
+            "add_name_placeholder": "e.g. Modern Sofa",
+            "add_category_label": "Category (optional)",
+            "add_category_placeholder": "My Models",
+            "add_images_label": "Images",
+            "add_images_hint": "The first image is the thumbnail — click ★ to change",
+            "add_images_btn": "Add Images",
+            "add_models_label": "SketchUp Files",
+            "add_models_btn": "Upload SketchUp Files (.skp)",
+            "thumbnail": "Thumbnail",
+            "cancel": "Cancel",
+            "add_save_btn": "Add to Library",
+            "add_saving": "Saving...",
+            "add_err_name": "Please enter an article name.",
+            "add_err_images": "Please add at least one image.",
+            "add_err_models": "Please upload at least one SketchUp file.",
             "has_model": "3D Model",
             "no_model": "No Model",
             "imgs_count": "imgs",
@@ -83,7 +102,7 @@ Item {
 
             // Settings View
             "settings_title": "Application Settings & Details",
-            "settings_subtitle": "Configure interface language, view license and customer details, check trial status, and import/export data.",
+            "settings_subtitle": "Configure interface language, view license and customer details, and check trial status.",
             "section_language_title": "Language / Langue",
             "section_language_desc": "Select your preferred application display language (EN / FR only).",
             "lang_name_en": "English",
@@ -146,6 +165,8 @@ Item {
             "phone_placeholder": "+1 555 123 4567",
             "address_label": "Physical Address (Optional)",
             "address_placeholder": "City, Country",
+            "admin_key_label": "API / Admin Key (Optional - for licensing server auth)",
+            "admin_key_placeholder": "X-Admin-Key (optional)",
             "val_key_err": "Please enter a valid License Key (min 10 characters)",
             "val_name_err": "Full Name must be at least 2 characters",
             "val_email_err": "A valid Email address is required",
@@ -180,13 +201,13 @@ Item {
 
             // Header Bar
             "header_gallery_title": "Galerie d'actifs 3D",
-            "header_gallery_subtitle": "Parcourir les modèles et actifs dans ./data",
+            "header_gallery_subtitle": "Parcourir les modèles et actifs du stockage",
             "header_categories_title": "Catégories & Taxonomie",
-            "header_categories_subtitle": "Inspecter la taxonomie locale découverte dans ./data",
+            "header_categories_subtitle": "Catégories découvertes à partir des dossiers du stockage",
             "header_settings_title": "Paramètres & Détails",
-            "header_settings_subtitle": "Gérer la langue, la licence, le statut d'essai et la sauvegarde",
-            "search_placeholder": "Rechercher des modèles ./data...",
-            "open_storage_btn": "Ouvrir ./data",
+            "header_settings_subtitle": "Gérer la langue, la licence et le statut d'essai",
+            "search_placeholder": "Rechercher dans le stockage...",
+            "open_storage_btn": "Ouvrir le stockage",
 
             // Gallery / Library View
             "filter_placeholder": "Filtrer par nom, catégorie ou fichier...",
@@ -194,9 +215,9 @@ Item {
             "category_prefix": "Catégorie : ",
             "assets_count": "Actifs",
             "models_count": "Modèles",
-            "empty_title": "Aucun modèle 3D dans ./data",
-            "empty_desc": "L'application lit exclusivement le dossier ./data.\nPlacez vos modèles 3D (.skp, .obj, .blend) et aperçus d'images dans ./data.",
-            "open_folder_btn": "Ouvrir le dossier ./data",
+            "empty_title": "Aucun modèle 3D dans storage",
+            "empty_desc": "L'application lit directement le dossier storage.\nPlacez vos modèles 3D (.skp, .obj, .blend) et aperçus d'images dans storage.",
+            "open_folder_btn": "Ouvrir le dossier storage",
 
             // Categories View
             "categories_title": "Taxonomie locale des actifs",
@@ -206,6 +227,25 @@ Item {
 
             // Model Card
             "open_location": "Ouvrir l'emplacement",
+            "add_item_btn": "Ajouter",
+            "add_item_title": "Ajouter un élément à la bibliothèque",
+            "add_item_subtitle": "Importez des images, nommez l'article et joignez les fichiers SketchUp",
+            "add_name_label": "Nom de l'article",
+            "add_name_placeholder": "ex. Canapé moderne",
+            "add_category_label": "Catégorie (facultatif)",
+            "add_category_placeholder": "Mes modèles",
+            "add_images_label": "Images",
+            "add_images_hint": "La première image est la miniature — cliquez ★ pour changer",
+            "add_images_btn": "Ajouter des images",
+            "add_models_label": "Fichiers SketchUp",
+            "add_models_btn": "Importer des fichiers SketchUp (.skp)",
+            "thumbnail": "Miniature",
+            "cancel": "Annuler",
+            "add_save_btn": "Ajouter à la bibliothèque",
+            "add_saving": "Enregistrement...",
+            "add_err_name": "Veuillez saisir un nom d'article.",
+            "add_err_images": "Veuillez ajouter au moins une image.",
+            "add_err_models": "Veuillez importer au moins un fichier SketchUp.",
             "has_model": "Modèle 3D",
             "no_model": "Aucun modèle",
             "imgs_count": "images",
@@ -213,7 +253,7 @@ Item {
 
             // Settings View
             "settings_title": "Paramètres & Détails de l'application",
-            "settings_subtitle": "Configurer la langue, afficher la licence et les détails client, vérifier l'essai et gérer les sauvegardes.",
+            "settings_subtitle": "Configurer la langue, afficher la licence et les détails client, et vérifier l'essai.",
             "section_language_title": "Langue de l'interface",
             "section_language_desc": "Choisissez votre langue d'affichage préférée (EN / FR uniquement).",
             "lang_name_en": "English",
@@ -276,6 +316,8 @@ Item {
             "phone_placeholder": "+33 6 12 34 56 78",
             "address_label": "Adresse physique (Optionnelle)",
             "address_placeholder": "Ville, Pays",
+            "admin_key_label": "Clé API / Admin (Facultatif - authentification serveur)",
+            "admin_key_placeholder": "X-Admin-Key (facultatif)",
             "val_key_err": "Veuillez entrer une clé de licence valide (min 10 caractères)",
             "val_name_err": "Le nom complet doit comporter au moins 2 caractères",
             "val_email_err": "Une adresse e-mail valide est requise",

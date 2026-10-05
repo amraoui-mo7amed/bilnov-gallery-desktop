@@ -143,6 +143,16 @@ class AppBridge(QObject):
         return self.lic.current_state.customer_phone or ""
 
     @Property(str, notify=licenseChanged)
+    def adminKey(self) -> str:
+        return getattr(self.lic, "admin_key", "")
+
+    @Slot(str)
+    def setAdminKey(self, key: str):
+        self.lic.set_admin_key(key)
+        self.licenseChanged.emit()
+        self.toast.emit("success", "API / Admin Key updated")
+
+    @Property(str, notify=licenseChanged)
     def licenseExpiresAt(self) -> str:
         return self.lic.current_state.expires_at or "Perpetual"
 
@@ -200,7 +210,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v1.2.1"
+        return "v1.3.0"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
@@ -419,6 +429,61 @@ class AppBridge(QObject):
     def openFolder(self, folder_path: str):
         """Alias for openArticleLocation."""
         self.openArticleLocation(folder_path)
+
+    # =============================================================
+    # Add Item to Library (images + article name + SketchUp files)
+    # =============================================================
+
+    itemAdded = Signal(bool, str)
+
+    @Slot(result="QVariantList")
+    def pickImages(self) -> list:
+        """Opens a multi-select image picker. Returns absolute local paths (order preserved)."""
+        from PySide6.QtWidgets import QFileDialog
+        files, _ = QFileDialog.getOpenFileNames(
+            None,
+            "Select Images",
+            "",
+            "Images (*.jpg *.jpeg *.png *.webp *.bmp *.gif)",
+        )
+        return [f for f in files if f]
+
+    @Slot(result="QVariantList")
+    def pickModelFiles(self) -> list:
+        """Opens a multi-select picker for SketchUp (and other 3D) files."""
+        from PySide6.QtWidgets import QFileDialog
+        files, _ = QFileDialog.getOpenFileNames(
+            None,
+            "Select SketchUp Files",
+            "",
+            "SketchUp Files (*.skp);;3D Models (*.skp *.obj *.fbx *.blend *.glb *.gltf *.stl *.3ds *.max *.c4d);;Archives (*.zip *.rar *.7z);;All Files (*)",
+        )
+        return [f for f in files if f]
+
+    @Slot(str, result=str)
+    def toFileUrl(self, path: str) -> str:
+        return QUrl.fromLocalFile(path).toString() if path else ""
+
+    @Slot(str, "QVariantList", "QVariantList", str)
+    def addLibraryItem(self, title: str, images: list, models: list, category: str = ""):
+        """Copies images (first = thumbnail) and model files into a new article folder in storage."""
+        img_list = [str(p) for p in (images or [])]
+        model_list = [str(p) for p in (models or [])]
+
+        def _task():
+            return self.lib.add_item(title, img_list, model_list, category)
+
+        def _on_success(res):
+            self.itemAdded.emit(True, res.get("folder_path", ""))
+            self.toast.emit("success", f"\"{res.get('title', title)}\" added to your library")
+            self.loadLibrary()
+            self.loadCategories()
+
+        def _on_error(exc):
+            self.itemAdded.emit(False, str(exc))
+            self.toast.emit("error", f"Could not add item: {exc}")
+
+        self.thread_pool.start(Worker(_task, on_success=_on_success, on_error=_on_error))
 
     @Slot(str)
     def copyToClipboard(self, text: str):

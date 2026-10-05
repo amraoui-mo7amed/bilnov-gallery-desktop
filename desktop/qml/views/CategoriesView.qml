@@ -137,7 +137,7 @@ Item {
                                 }
 
                                 Text {
-                                    text: (modelData.subcategories ? modelData.subcategories.length : 0) + " " + I18n.t("subcategories_count")
+                                    text: (modelData.count || 0) + " " + I18n.t("assets_count") + ((modelData.subcategories && modelData.subcategories.length > 0) ? (" • " + modelData.subcategories.length + " " + I18n.t("subcategories_count")) : "")
                                     color: Theme.textMuted
                                     font.pixelSize: 11
                                     horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft

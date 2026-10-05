@@ -8,6 +8,7 @@ import "../components"
 Item {
     id: root
     signal openGallery(var images, string title)
+    signal addItemRequested()
 
     property string selectedCategory: "all"
     property string currentSearchQuery: ""
@@ -188,6 +189,39 @@ Item {
                         font.pixelSize: 12
                         font.bold: true
                     }
+                }
+            }
+
+            // Add Item Button
+            Rectangle {
+                width: addItemRow.implicitWidth + 28
+                height: 40
+                radius: Theme.radiusMd
+                color: addItemMouse.containsMouse ? Theme.primaryHover : Theme.primary
+
+                RowLayout {
+                    id: addItemRow
+                    anchors.centerIn: parent
+                    spacing: 8
+                    FaIcon {
+                        icon: Icons.plus
+                        size: 12
+                        iconColor: "white"
+                    }
+                    Text {
+                        text: I18n.t("add_item_btn")
+                        color: "white"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+                }
+
+                MouseArea {
+                    id: addItemMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.addItemRequested()
                 }
             }
 
