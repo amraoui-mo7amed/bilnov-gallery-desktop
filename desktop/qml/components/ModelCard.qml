@@ -82,9 +82,9 @@ Rectangle {
                         }
                         Text {
                             text: {
-                                if (root.itemData.images_count && root.itemData.images_count > 0) return root.itemData.images_count + " imgs";
+                                if (root.itemData.images_count && root.itemData.images_count > 0) return root.itemData.images_count + " " + I18n.t("imgs_count");
                                 if (root.itemData.category) return root.itemData.category;
-                                return "Asset";
+                                return I18n.t("asset_badge");
                             }
                             color: "#F8FAFC"
                             font.pixelSize: 10
@@ -110,13 +110,14 @@ Rectangle {
                         id: rightBadgeRow
                         anchors.centerIn: parent
                         spacing: 6
+                        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                         FaIcon {
                             icon: root.itemData.has_model ? Icons.check : Icons.cube
                             size: 9
                             iconColor: root.itemData.has_model ? "#10B981" : "#94A3B8"
                         }
                         Text {
-                            text: root.itemData.model_size || (root.itemData.has_model ? "3D Model" : "No Model")
+                            text: root.itemData.model_size || (root.itemData.has_model ? I18n.t("has_model") : I18n.t("no_model"))
                             color: "#F8FAFC"
                             font.pixelSize: 10
                             font.bold: true
@@ -153,6 +154,7 @@ Rectangle {
                 maximumLineCount: 2
                 elide: Text.ElideRight
                 Layout.fillWidth: true
+                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
             }
 
             // Subcategory / Category subtitle
@@ -162,6 +164,7 @@ Rectangle {
                 font.pixelSize: 10
                 elide: Text.ElideRight
                 Layout.fillWidth: true
+                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
             }
 
             Item { Layout.fillHeight: true }
@@ -170,6 +173,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
+                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                 // PRIMARY BUTTON: Open Exact Article Location (Task 6)
                 Rectangle {
@@ -181,13 +185,14 @@ Rectangle {
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: 6
+                        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                         FaIcon {
                             icon: Icons.folderOpen
                             size: 11
                             iconColor: "white"
                         }
                         Text {
-                            text: "Open Location"
+                            text: I18n.t("open_location")
                             color: "white"
                             font.pixelSize: 11
                             font.bold: true

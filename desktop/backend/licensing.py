@@ -39,6 +39,10 @@ logger = logging.getLogger("licensing")
 # Secret salt for local anti-tampering verification checksum
 _LOCAL_INTEGRITY_SALT = "bilnov-desktop-anti-tamper-v1-secret"
 
+# 30-Day Free Trial Configuration
+TRIAL_DAYS = 30
+TRIAL_FILE_PATH = Path.home() / ".bilnov_trial.json"
+
 
 def get_deterministic_device_id() -> str:
     """
@@ -164,13 +168,16 @@ class LicenseManager:
             calc_checksum = compute_license_checksum(data)
             if saved_checksum != calc_checksum:
                 logger.warning("Local license file checksum mismatch (corrupted or tampered).")
+                self._tampered_detected = True
                 return None
 
             # Hardware binding check
             if data.get("device_id") != self.device_id:
                 logger.warning("Local license bound to different hardware ID.")
+                self._tampered_detected = True
                 return None
 
+            self._tampered_detected = False
             return data
         except Exception as e:
             logger.error("Failed to read local license: %s", e)
@@ -197,6 +204,59 @@ class LicenseManager:
         except Exception as e:
             logger.error("Failed to atomically save license file: %s", e)
             return False
+
+    # -------------------------------------------------------------
+    # 30-Day Free Trial Management
+    # -------------------------------------------------------------
+
+    def get_or_create_trial(self) -> Dict[str, Any]:
+        """Reads or initializes 30-day free trial bound to hardware device_id."""
+        if TRIAL_FILE_PATH.exists():
+            try:
+                with open(TRIAL_FILE_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("device_id") == self.device_id and "started_at" in data:
+                    return data
+            except Exception as e:
+                logger.warning("Could not read trial file: %s", e)
+
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        data = {
+            "device_id": self.device_id,
+            "started_at": now_iso,
+            "trial_days": TRIAL_DAYS,
+        }
+        try:
+            with open(TRIAL_FILE_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.chmod(TRIAL_FILE_PATH, 0o600)
+        except Exception as e:
+            logger.warning("Could not persist trial file: %s", e)
+        return data
+
+    def evaluate_trial(self) -> Tuple[bool, int, str]:
+        """
+        Evaluates 30-day free trial status.
+        Returns: (is_active, days_remaining, message)
+        """
+        data = self.get_or_create_trial()
+        started_str = data.get("started_at", "")
+        now = datetime.datetime.now(datetime.timezone.utc)
+        try:
+            started_dt = datetime.datetime.fromisoformat(started_str.replace("Z", "+00:00"))
+        except Exception:
+            started_dt = now
+
+        elapsed_seconds = (now - started_dt).total_seconds()
+        total_seconds = TRIAL_DAYS * 86400
+        remaining_seconds = total_seconds - elapsed_seconds
+
+        if remaining_seconds > 0:
+            days_left = max(1, int(remaining_seconds / 86400) + 1)
+            days_left = min(TRIAL_DAYS, days_left)
+            return True, days_left, f"30-Day Free Trial: {days_left} day(s) remaining"
+        else:
+            return False, 0, "30-Day Free Trial has expired. Workstation license required."
 
     # -------------------------------------------------------------
     # Lifecycle Workflows
@@ -288,14 +348,35 @@ class LicenseManager:
         Permits 7-Day Offline Grace Period if server is unreachable.
         """
         local_data = self.load_local_license()
-        if not local_data:
+        if getattr(self, "_tampered_detected", False):
             self.current_state = LicenseState(
                 is_valid=False,
                 status_code="NEEDS_ACTIVATION",
-                message="No valid license found. Activation required.",
+                message="License file corrupted or tampered. Activation required.",
                 device_id=self.device_id,
             )
-            return False, "Activation required"
+            return False, "License corrupted"
+
+        if not local_data:
+            is_trial_active, days_left, trial_msg = self.evaluate_trial()
+            if is_trial_active:
+                self.current_state = LicenseState(
+                    is_valid=True,
+                    status_code="TRIAL",
+                    message=trial_msg,
+                    device_id=self.device_id,
+                    customer_name=f"Trial Workstation ({days_left}d left)",
+                    offline_days_remaining=days_left,
+                )
+                return True, trial_msg
+            else:
+                self.current_state = LicenseState(
+                    is_valid=False,
+                    status_code="TRIAL_EXPIRED",
+                    message="30-Day Free Trial has expired. Workstation license required.",
+                    device_id=self.device_id,
+                )
+                return False, "Trial expired"
 
         key = local_data.get("license_key", "")
         last_verified_str = local_data.get("last_verified_at", "")
@@ -417,14 +498,35 @@ class LicenseManager:
         Background check every 4 hours. Immediately locks UI if revoked or expired.
         """
         local_data = self.load_local_license()
-        if not local_data:
+        if getattr(self, "_tampered_detected", False):
             self.current_state = LicenseState(
                 is_valid=False,
                 status_code="NEEDS_ACTIVATION",
-                message="License missing",
+                message="License file corrupted or tampered. Activation required.",
                 device_id=self.device_id,
             )
-            return False, "License missing"
+            return False, "License corrupted"
+
+        if not local_data:
+            is_trial_active, days_left, trial_msg = self.evaluate_trial()
+            if is_trial_active:
+                self.current_state = LicenseState(
+                    is_valid=True,
+                    status_code="TRIAL",
+                    message=trial_msg,
+                    device_id=self.device_id,
+                    customer_name=f"Trial Workstation ({days_left}d left)",
+                    offline_days_remaining=days_left,
+                )
+                return True, trial_msg
+            else:
+                self.current_state = LicenseState(
+                    is_valid=False,
+                    status_code="TRIAL_EXPIRED",
+                    message="30-Day Free Trial has expired. Workstation license required.",
+                    device_id=self.device_id,
+                )
+                return False, "Trial expired"
 
         key = local_data.get("license_key", "")
         url = f"{self.server_url}/api/v1/license/heartbeat"

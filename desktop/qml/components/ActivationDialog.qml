@@ -101,16 +101,18 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Bilnov Gallery Activation"
+                        text: I18n.t("activation_title")
                         color: "#F8FAFC"
                         font.pixelSize: 18
                         font.bold: true
+                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
 
                     Text {
-                        text: "License Management & Hardware Binding"
+                        text: I18n.t("activation_subtitle")
                         color: "#94A3B8"
                         font.pixelSize: 11
+                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
                 }
 
@@ -177,7 +179,7 @@ Rectangle {
                                 spacing: 2
 
                                 Text {
-                                    text: "DEVICE HARDWARE FINGERPRINT (SHA-256)"
+                                    text: I18n.t("device_fingerprint")
                                     color: "#64748B"
                                     font.pixelSize: 9
                                     font.bold: true
@@ -221,10 +223,11 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
-                            text: "License Key *"
+                            text: I18n.t("license_key_label")
                             color: "#E2E8F0"
                             font.pixelSize: 11
                             font.bold: true
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
                         Rectangle {
                             Layout.fillWidth: true
@@ -242,12 +245,16 @@ Rectangle {
                                 font.pixelSize: 12
                                 selectByMouse: true
                                 clip: true
+                                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                                 Text {
                                     text: "ZED-XXXX-XXXX-XXXX"
                                     color: "#64748B"
                                     font.pixelSize: 12
                                     visible: !keyInput.text && !keyInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -258,10 +265,11 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
-                            text: "Customer Full Name *"
+                            text: I18n.t("customer_name_label")
                             color: "#E2E8F0"
                             font.pixelSize: 11
                             font.bold: true
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
                         Rectangle {
                             Layout.fillWidth: true
@@ -279,12 +287,16 @@ Rectangle {
                                 font.pixelSize: 12
                                 selectByMouse: true
                                 clip: true
+                                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                                 Text {
-                                    text: "e.g. Sarah Connor"
+                                    text: I18n.t("customer_name_placeholder")
                                     color: "#64748B"
                                     font.pixelSize: 12
                                     visible: !nameInput.text && !nameInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -295,10 +307,11 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
-                            text: "Customer Email Address *"
+                            text: I18n.t("email_label")
                             color: "#E2E8F0"
                             font.pixelSize: 11
                             font.bold: true
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
                         Rectangle {
                             Layout.fillWidth: true
@@ -315,12 +328,16 @@ Rectangle {
                                 font.pixelSize: 12
                                 selectByMouse: true
                                 clip: true
+                                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                                 Text {
-                                    text: "name@company.com"
+                                    text: I18n.t("email_placeholder")
                                     color: "#64748B"
                                     font.pixelSize: 12
                                     visible: !emailInput.text && !emailInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -331,10 +348,11 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
-                            text: "Contact Phone Number *"
+                            text: I18n.t("phone_label")
                             color: "#E2E8F0"
                             font.pixelSize: 11
                             font.bold: true
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
                         Rectangle {
                             Layout.fillWidth: true
@@ -351,12 +369,16 @@ Rectangle {
                                 font.pixelSize: 12
                                 selectByMouse: true
                                 clip: true
+                                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                                 Text {
-                                    text: "+1 555 123 4567"
+                                    text: I18n.t("phone_placeholder")
                                     color: "#64748B"
                                     font.pixelSize: 12
                                     visible: !phoneInput.text && !phoneInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -367,9 +389,10 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
-                            text: "Physical Address (Optional)"
+                            text: I18n.t("address_label")
                             color: "#E2E8F0"
                             font.pixelSize: 11
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
                         Rectangle {
                             Layout.fillWidth: true
@@ -386,12 +409,16 @@ Rectangle {
                                 font.pixelSize: 12
                                 selectByMouse: true
                                 clip: true
+                                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                                 Text {
-                                    text: "City, Country"
+                                    text: I18n.t("address_placeholder")
                                     color: "#64748B"
                                     font.pixelSize: 12
                                     visible: !addrInput.text && !addrInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -407,6 +434,7 @@ Rectangle {
                 font.pixelSize: 11
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
+                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
             }
 
             // Submit Button
@@ -420,6 +448,7 @@ Rectangle {
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 8
+                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                     BusyIndicator {
                         running: root.isSubmitting
@@ -436,7 +465,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: root.isSubmitting ? "Activating with Licensing Server..." : "Activate Workstation"
+                        text: root.isSubmitting ? I18n.t("btn_activating") : I18n.t("btn_activate")
                         color: "white"
                         font.pixelSize: 13
                         font.bold: true
@@ -457,19 +486,19 @@ Rectangle {
                         var a = addrInput.text.trim();
 
                         if (k.length < 10) {
-                            root.errorMessage = "Please enter a valid License Key (min 10 characters)";
+                            root.errorMessage = I18n.t("val_key_err");
                             return;
                         }
                         if (n.length < 2) {
-                            root.errorMessage = "Full Name must be at least 2 characters";
+                            root.errorMessage = I18n.t("val_name_err");
                             return;
                         }
                         if (e.length < 5 || e.indexOf("@") === -1) {
-                            root.errorMessage = "A valid Email address is required";
+                            root.errorMessage = I18n.t("val_email_err");
                             return;
                         }
                         if (p.length < 6) {
-                            root.errorMessage = "Contact Phone must be at least 6 digits";
+                            root.errorMessage = I18n.t("val_phone_err");
                             return;
                         }
 

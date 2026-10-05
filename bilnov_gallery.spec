@@ -47,45 +47,123 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='BilnovGallery',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
+icon_ico = str(ROOT_DIR / 'desktop' / 'assets' / 'icon.ico')
+icon_icns = str(ROOT_DIR / 'desktop' / 'assets' / 'icon.icns')
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name='BilnovGallery',
-)
+if sys.platform == 'win32':
+    # 1. Standalone Single-File Executable
+    # Contains Python DLL, PySide6 DLLs, and QML data embedded directly inside BilnovGallery.exe
+    exe_standalone = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name='BilnovGallery',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=icon_ico,
+    )
 
-if sys.platform == 'darwin':
+    # 2. Portable Directory Distribution (All DLLs alongside BilnovGallery.exe)
+    exe_dir = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name='BilnovGallery',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=icon_ico,
+    )
+
+    coll = COLLECT(
+        exe_dir,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name='BilnovGallery-Portable',
+    )
+
+elif sys.platform == 'darwin':
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name='BilnovGallery',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=icon_icns,
+    )
+
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name='BilnovGallery',
+    )
+
     app = BUNDLE(
         coll,
         name='BilnovGallery.app',
-        icon=None,
+        icon=icon_icns,
         bundle_identifier='com.bilnov.gallery',
         info_plist={
-            'CFBundleShortVersionString': '1.0.0',
-            'CFBundleVersion': '1.0.0',
+            'CFBundleShortVersionString': '1.1.0',
+            'CFBundleVersion': '1.1.0',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },
+    )
+else:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name='BilnovGallery',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        icon=icon_ico,
     )

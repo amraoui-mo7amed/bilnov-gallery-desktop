@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     Property,
     QObject,
     QRunnable,
+    QSettings,
     QThreadPool,
     QTimer,
     QUrl,
@@ -60,6 +61,8 @@ class AppBridge(QObject):
     # Reactive state change signals
     licenseChanged = Signal()
     activationResult = Signal(bool, str)
+
+    languageChanged = Signal()
 
     libraryItemsChanged = Signal()
     libraryLoadingChanged = Signal()
@@ -126,6 +129,28 @@ class AppBridge(QObject):
     @Property(int, notify=licenseChanged)
     def offlineDaysRemaining(self) -> int:
         return self.lic.current_state.offline_days_remaining
+
+    @Property(bool, notify=licenseChanged)
+    def isTrial(self) -> bool:
+        return self.lic.current_state.status_code == "TRIAL"
+
+    # =============================================================
+    # Internationalization / Language Preference (ar / en / fr)
+    # =============================================================
+
+    @Property(str, notify=languageChanged)
+    def language(self) -> str:
+        settings = QSettings("Bilnov", "BilnovGallery")
+        return str(settings.value("language", "en"))
+
+    @Slot(str)
+    def saveLanguagePreference(self, lang: str):
+        if lang in ["en", "fr", "ar"]:
+            settings = QSettings("Bilnov", "BilnovGallery")
+            current = str(settings.value("language", "en"))
+            if current != lang:
+                settings.setValue("language", lang)
+                self.languageChanged.emit()
 
     # =============================================================
     # Library Properties (Reading exclusively ./data)

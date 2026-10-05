@@ -7,7 +7,20 @@ import sys
 from pathlib import Path
 from decouple import config
 
-BASE_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    if sys.platform == "darwin":
+        app_dir = Path(sys.executable).resolve().parent.parent.parent
+        if (Path.cwd() / "data").exists():
+            BASE_DIR = Path.cwd()
+        else:
+            BASE_DIR = app_dir.parent
+    else:
+        if (Path.cwd() / "data").exists():
+            BASE_DIR = Path.cwd()
+        else:
+            BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
 
 # The one and only data folder the app reads
 DEFAULT_DATA_DIR = str(BASE_DIR / "data")
@@ -26,7 +39,7 @@ IMAGE_CACHE_DIR = USER_CACHE_DIR / "images"
 IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Licensing API Configuration (from openapi.json)
-LICENSE_SERVER_URL = config("LICENSE_SERVER_URL", default="http://localhost:8000").rstrip("/")
+LICENSE_SERVER_URL = config("LICENSE_SERVER_URL", default="https://bilnov-gallery.bilnov.com").rstrip("/")
 ADMIN_KEY = config("ADMIN_KEY", default="")
 OFFLINE_GRACE_DAYS = 7
 HEARTBEAT_INTERVAL_SECONDS = 4 * 3600  # 4 hours

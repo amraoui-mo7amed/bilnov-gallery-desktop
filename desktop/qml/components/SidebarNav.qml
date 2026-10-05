@@ -31,6 +31,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
+            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
             Rectangle {
                 width: 38
@@ -38,27 +39,33 @@ Rectangle {
                 radius: Theme.radiusMd
                 color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                 border.color: Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.3)
+                clip: true
 
-                FaIcon {
+                Image {
                     anchors.centerIn: parent
-                    icon: Icons.cubes
-                    size: 16
-                    iconColor: Theme.primaryLight
+                    width: 32
+                    height: 32
+                    source: "../../assets/icon.png"
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
                 }
             }
 
             ColumnLayout {
                 spacing: 2
                 Text {
-                    text: "Bilnov Gallery"
+                    text: I18n.t("app_title")
                     color: Theme.textPrimary
                     font.pixelSize: 14
                     font.bold: true
+                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                 }
                 Text {
-                    text: "3D Asset Platform"
+                    text: I18n.t("app_subtitle")
                     color: Theme.textMuted
                     font.pixelSize: 10
+                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                 }
             }
         }
@@ -77,8 +84,8 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { name: "3D Asset Gallery", icon: Icons.cubes, index: 0 },
-                    { name: "Taxonomy & Categories", icon: Icons.layerGroup, index: 1 }
+                    { name: I18n.t("nav_gallery"), icon: Icons.cubes, index: 0 },
+                    { name: I18n.t("nav_categories"), icon: Icons.layerGroup, index: 1 }
                 ]
 
                 delegate: Rectangle {
@@ -102,6 +109,7 @@ Rectangle {
                         anchors.leftMargin: 12
                         anchors.rightMargin: 12
                         spacing: 12
+                        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                         FaIcon {
                             icon: modelData.icon
@@ -115,6 +123,7 @@ Rectangle {
                             font.pixelSize: 12
                             font.weight: root.activeTab === modelData.index ? Font.Bold : Font.Normal
                             Layout.fillWidth: true
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
                     }
 
@@ -144,6 +153,7 @@ Rectangle {
             color: licMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : Theme.surfaceElevated
             border.color: {
                 if (Bridge.licenseStatusCode === "ACTIVE") return Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.4);
+                if (Bridge.licenseStatusCode === "TRIAL") return Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.4);
                 if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.4);
                 return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.4);
             }
@@ -153,6 +163,7 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 10
                 spacing: 10
+                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                 Rectangle {
                     width: 30
@@ -160,16 +171,18 @@ Rectangle {
                     radius: 6
                     color: {
                         if (Bridge.licenseStatusCode === "ACTIVE") return Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.15);
+                        if (Bridge.licenseStatusCode === "TRIAL") return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2);
                         if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.15);
                         return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15);
                     }
 
                     FaIcon {
                         anchors.centerIn: parent
-                        icon: Icons.shield
+                        icon: Bridge.licenseStatusCode === "TRIAL" ? Icons.clock : Icons.shield
                         size: 13
                         iconColor: {
                             if (Bridge.licenseStatusCode === "ACTIVE") return Theme.success;
+                            if (Bridge.licenseStatusCode === "TRIAL") return Theme.primaryLight;
                             if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") return Theme.warning;
                             return Theme.error;
                         }
@@ -182,38 +195,43 @@ Rectangle {
 
                     Text {
                         text: {
-                            if (Bridge.licenseStatusCode === "ACTIVE") return "Licensed";
-                            if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") return "Offline Grace";
-                            return "Activation Required";
+                            if (Bridge.licenseStatusCode === "ACTIVE") return I18n.t("status_licensed");
+                            if (Bridge.licenseStatusCode === "TRIAL") return I18n.t("status_trial");
+                            if (Bridge.licenseStatusCode === "TRIAL_EXPIRED") return I18n.t("status_trial_expired");
+                            if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") return I18n.t("status_offline");
+                            return I18n.t("status_activation_required");
                         }
                         color: {
                             if (Bridge.licenseStatusCode === "ACTIVE") return Theme.success;
+                            if (Bridge.licenseStatusCode === "TRIAL") return Theme.primaryLight;
                             if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") return Theme.warning;
                             return Theme.error;
                         }
                         font.pixelSize: 11
                         font.bold: true
+                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
 
                     Text {
                         text: {
                             if (Bridge.licenseStatusCode === "ACTIVE") {
-                                return Bridge.customerName || "Bound to Workstation";
+                                return Bridge.customerName || I18n.t("bound_to_workstation");
                             }
-                            if (Bridge.licenseStatusCode === "ACTIVE_OFFLINE") {
-                                return Bridge.offlineDaysRemaining + " days left";
+                            if (Bridge.licenseStatusCode === "TRIAL" || Bridge.licenseStatusCode === "ACTIVE_OFFLINE") {
+                                return Bridge.offlineDaysRemaining + " " + I18n.t("days_left");
                             }
-                            return "Click to activate";
+                            return I18n.t("click_to_activate");
                         }
                         color: Theme.textMuted
                         font.pixelSize: 9
                         elide: Text.ElideRight
                         Layout.fillWidth: true
+                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
                 }
 
                 FaIcon {
-                    icon: Icons.chevronRight
+                    icon: I18n.isRTL ? Icons.chevronLeft : Icons.chevronRight
                     size: 9
                     iconColor: Theme.textMuted
                 }

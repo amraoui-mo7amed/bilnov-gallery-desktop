@@ -31,6 +31,15 @@ from backend.image_provider import image_provider_instance
 
 
 def main():
+    # Register Windows Application User Model ID for proper taskbar grouping & icon display
+    if sys.platform == "win32":
+        import ctypes
+        myappid = "bilnov.gallery.desktop.app"
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
     # Set modern controls style
     QQuickStyle.setStyle("Fusion")
 
@@ -42,10 +51,18 @@ def main():
     app.setApplicationName("Bilnov Gallery")
     app.setApplicationDisplayName("Bilnov Gallery Desktop")
 
-    icon_path = base_dir / "assets" / "icon.png"
-    if icon_path.exists():
-        from PySide6.QtGui import QIcon
-        app.setWindowIcon(QIcon(str(icon_path)))
+    # Set application icon (favicon, taskbar, and window icon)
+    from PySide6.QtGui import QIcon
+    icon_ico = base_dir / "assets" / "icon.ico"
+    icon_png = base_dir / "assets" / "icon.png"
+    app_icon = QIcon()
+    if icon_ico.exists() and sys.platform == "win32":
+        app_icon = QIcon(str(icon_ico))
+    elif icon_png.exists():
+        app_icon = QIcon(str(icon_png))
+
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
 
     # Set native modern font
     font = QFontDatabase.systemFont(QFontDatabase.GeneralFont)
@@ -88,6 +105,12 @@ def main():
     if not engine.rootObjects():
         print("Error: Could not load QML main file.", file=sys.stderr)
         sys.exit(-1)
+
+    # Set icon explicitly on native window objects
+    if not app_icon.isNull():
+        for obj in engine.rootObjects():
+            if hasattr(obj, "setIcon"):
+                obj.setIcon(app_icon)
 
     # Initial License verification and data loading from ./data
     bridge.verifyLicense()

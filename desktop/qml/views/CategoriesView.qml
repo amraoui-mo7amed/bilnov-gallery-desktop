@@ -19,9 +19,10 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
+            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
             Text {
-                text: "Local Asset Taxonomy"
+                text: I18n.t("categories_title")
                 color: Theme.textPrimary
                 font.pixelSize: 18
                 font.bold: true
@@ -37,7 +38,7 @@ Item {
                 Text {
                     id: catCountText
                     anchors.centerIn: parent
-                    text: Bridge.categories.length + " Categories"
+                    text: Bridge.categories.length + " " + I18n.t("categories_count")
                     color: Theme.primaryLight
                     font.pixelSize: 11
                     font.bold: true
@@ -105,6 +106,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
+                            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                             Rectangle {
                                 width: 34
@@ -131,12 +133,14 @@ Item {
                                     font.bold: true
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
 
                                 Text {
-                                    text: (modelData.subcategories ? modelData.subcategories.length : 0) + " Subcategories"
+                                    text: (modelData.subcategories ? modelData.subcategories.length : 0) + " " + I18n.t("subcategories_count")
                                     color: Theme.textMuted
                                     font.pixelSize: 11
+                                    horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -145,8 +149,9 @@ Item {
 
                         RowLayout {
                             Layout.fillWidth: true
+                            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                             Text {
-                                text: "Browse assets ›"
+                                text: I18n.t("browse_assets")
                                 color: catItemMouse.containsMouse ? Theme.primaryLight : Theme.textMuted
                                 font.pixelSize: 11
                                 font.bold: true

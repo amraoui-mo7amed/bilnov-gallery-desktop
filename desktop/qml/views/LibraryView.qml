@@ -27,6 +27,7 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
+            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
             // Search filter field
             Rectangle {
@@ -42,6 +43,7 @@ Item {
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
                     spacing: 8
+                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                     FaIcon {
                         icon: Icons.search
@@ -56,12 +58,16 @@ Item {
                         font.pixelSize: 12
                         selectByMouse: true
                         clip: true
+                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
 
                         Text {
-                            text: "Filter models by name, category, or file..."
+                            text: I18n.t("filter_placeholder")
                             color: Theme.textMuted
                             font.pixelSize: 12
                             visible: !libFilterInput.text && !libFilterInput.activeFocus
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                         }
 
                         onTextChanged: {
@@ -100,6 +106,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 8
                     spacing: 6
+                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                     FaIcon {
                         icon: Icons.filter
@@ -108,12 +115,13 @@ Item {
                     }
 
                     Text {
-                        text: root.selectedCategory === "all" ? "All Categories" : root.selectedCategory
+                        text: root.selectedCategory === "all" ? I18n.t("all_categories") : root.selectedCategory
                         color: Theme.textPrimary
                         font.pixelSize: 12
                         font.bold: true
                         elide: Text.ElideRight
                         Layout.fillWidth: true
+                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
                     }
 
                     FaIcon {
@@ -136,7 +144,7 @@ Item {
                     width: 180
 
                     MenuItem {
-                        text: "All Categories"
+                        text: I18n.t("all_categories")
                         onTriggered: {
                             root.selectedCategory = "all";
                             Bridge.loadLibrary(root.currentSearchQuery, "all");
@@ -168,13 +176,14 @@ Item {
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 6
+                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                     FaIcon {
                         icon: Icons.cubes
                         size: 13
                         iconColor: Theme.primaryLight
                     }
                     Text {
-                        text: Bridge.libraryTotal + " Assets"
+                        text: Bridge.libraryTotal + " " + I18n.t("assets_count")
                         color: Theme.primaryLight
                         font.pixelSize: 12
                         font.bold: true
@@ -251,9 +260,10 @@ Item {
                     id: chipRow
                     anchors.centerIn: parent
                     spacing: 6
+                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
                     Text {
-                        text: "Category: " + root.selectedCategory
+                        text: I18n.t("category_prefix") + root.selectedCategory
                         color: Theme.primaryLight
                         font.pixelSize: 11
                         font.bold: true
@@ -311,7 +321,7 @@ Item {
                 }
 
                 Text {
-                    text: "No 3D Models in ./data"
+                    text: I18n.t("empty_title")
                     color: Theme.textPrimary
                     font.pixelSize: 17
                     font.bold: true
@@ -319,7 +329,7 @@ Item {
                 }
 
                 Text {
-                    text: "The application reads exclusively from the ./data folder.\nPlace your 3D models (.skp, .obj, .blend) and preview images inside ./data."
+                    text: I18n.t("empty_desc")
                     color: Theme.textMuted
                     font.pixelSize: 12
                     horizontalAlignment: Text.AlignHCenter
@@ -336,13 +346,14 @@ Item {
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: 8
+                        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                         FaIcon {
                             icon: Icons.folderOpen
                             size: 12
                             iconColor: "white"
                         }
                         Text {
-                            text: "Open ./data Folder"
+                            text: I18n.t("open_folder_btn")
                             color: "white"
                             font.pixelSize: 12
                             font.bold: true

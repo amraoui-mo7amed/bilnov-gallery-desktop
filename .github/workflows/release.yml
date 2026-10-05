@@ -61,7 +61,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller pillow
 
       - name: Build Windows Executable with PyInstaller
         run: |
@@ -70,16 +70,19 @@ jobs:
       - name: Package Windows Binary
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/BilnovGallery -DestinationPath dist/BilnovGallery-Windows.zip -Force
-          Copy-Item dist/BilnovGallery/BilnovGallery.exe dist/BilnovGallery.exe -ErrorAction SilentlyContinue
+          # Compress portable directory containing all DLLs and runtime files
+          Compress-Archive -Path dist/BilnovGallery-Portable -DestinationPath dist/BilnovGallery-Windows-Portable.zip -Force
+          # Note: dist/BilnovGallery.exe is the standalone single-file executable built by PyInstaller
+          # with embedded python DLL, Qt runtime, and assets.
+          Get-ChildItem dist
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-binaries
           path: |
-            dist/BilnovGallery-Windows.zip
             dist/BilnovGallery.exe
+            dist/BilnovGallery-Windows-Portable.zip
 
   publish-release:
     needs: [build-macos, build-windows]
@@ -109,5 +112,5 @@ jobs:
           files: |
             release-assets/BilnovGallery-macOS.dmg
             release-assets/BilnovGallery-macOS.zip
-            release-assets/BilnovGallery-Windows.zip
             release-assets/BilnovGallery.exe
+            release-assets/BilnovGallery-Windows-Portable.zip

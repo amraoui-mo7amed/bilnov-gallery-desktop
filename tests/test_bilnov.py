@@ -185,9 +185,12 @@ class TestBilnovGallery(unittest.TestCase):
 
     def test_initial_state_needs_activation(self):
         self.assertFalse(self.license_file.exists())
+        # Initial launch with no license file grants 30-Day Free Trial
         ok, msg = self.lic.verify_license()
-        self.assertFalse(ok)
-        self.assertEqual(self.lic.current_state.status_code, "NEEDS_ACTIVATION")
+        self.assertTrue(ok)
+        self.assertEqual(self.lic.current_state.status_code, "TRIAL")
+        self.assertIn("30-Day Free Trial", msg)
+        self.assertEqual(self.lic.current_state.offline_days_remaining, 30)
 
     # -------------------------------------------------------------
     # 2. Input Validation (openapi.json constraints)
@@ -359,6 +362,35 @@ class TestBilnovGallery(unittest.TestCase):
         del_ok = mgr.delete_item("CategoryA/SubA/ArticleA")
         self.assertTrue(del_ok)
         self.assertFalse(art_dir.exists())
+
+    def test_trial_lifecycle(self):
+        """Verify 30-day trial initialization, expiration after 30 days, and activation upgrade."""
+        import datetime
+        from desktop.backend.licensing import TRIAL_FILE_PATH, TRIAL_DAYS
+
+        # 1. First run creates trial
+        ok, msg = self.lic.verify_license()
+        self.assertTrue(ok)
+        self.assertEqual(self.lic.current_state.status_code, "TRIAL")
+        self.assertEqual(self.lic.current_state.offline_days_remaining, 30)
+
+        # 2. Simulate 31 days elapsed
+        if TRIAL_FILE_PATH.exists():
+            with open(TRIAL_FILE_PATH, "r") as f:
+                trial_data = json.load(f)
+            past_date = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=31)).isoformat()
+            trial_data["started_at"] = past_date
+            with open(TRIAL_FILE_PATH, "w") as f:
+                json.dump(trial_data, f)
+
+        # Re-evaluate
+        ok, msg = self.lic.verify_license()
+        self.assertFalse(ok)
+        self.assertEqual(self.lic.current_state.status_code, "TRIAL_EXPIRED")
+
+        # Clean up trial file
+        if TRIAL_FILE_PATH.exists():
+            TRIAL_FILE_PATH.unlink()
 
 
 if __name__ == "__main__":

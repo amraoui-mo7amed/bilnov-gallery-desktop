@@ -49,6 +49,7 @@ ApplicationWindow {
     RowLayout {
         anchors.fill: parent
         spacing: 0
+        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
         // Sidebar Navigation
         SidebarNav {
@@ -82,15 +83,15 @@ ApplicationWindow {
                 Layout.fillHeight: false
                 title: {
                     switch (window.activeTab) {
-                        case 0: return "3D Asset Gallery";
-                        case 1: return "Categories & Taxonomy";
-                        default: return "Bilnov Gallery";
+                        case 0: return I18n.t("header_gallery_title");
+                        case 1: return I18n.t("header_categories_title");
+                        default: return I18n.t("app_title");
                     }
                 }
                 subtitle: {
                     switch (window.activeTab) {
-                        case 0: return "Browse and preview 3D models stored exclusively in ./data";
-                        case 1: return "Inspect local taxonomy structure discovered in ./data";
+                        case 0: return I18n.t("header_gallery_subtitle");
+                        case 1: return I18n.t("header_categories_subtitle");
                         default: return "";
                     }
                 }
@@ -158,7 +159,7 @@ ApplicationWindow {
             }
 
             Text {
-                text: "Workstation Activation Required"
+                text: Bridge.licenseStatusCode === "TRIAL_EXPIRED" ? I18n.t("status_trial_expired") : I18n.t("lock_title")
                 color: "#F8FAFC"
                 font.pixelSize: 18
                 font.bold: true
@@ -166,7 +167,7 @@ ApplicationWindow {
             }
 
             Text {
-                text: Bridge.licenseMessage || "A valid Bilnov Gallery license is required to access local 3D assets."
+                text: Bridge.licenseMessage || I18n.t("lock_desc")
                 color: "#94A3B8"
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
@@ -183,13 +184,14 @@ ApplicationWindow {
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 8
+                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
                     FaIcon {
                         icon: Icons.key
                         size: 13
                         iconColor: "white"
                     }
                     Text {
-                        text: "Enter License Key"
+                        text: I18n.t("btn_enter_key")
                         color: "white"
                         font.pixelSize: 12
                         font.bold: true
