@@ -947,28 +947,73 @@ Flickable {
                                 wrapMode: Text.WordWrap
                             }
 
-                            Rectangle {
-                                width: 140
-                                height: 34
-                                radius: 6
-                                color: impMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surface
-                                border.color: Theme.primary
-                                border.width: 1
+                            RowLayout {
+                                spacing: 10
 
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: I18n.t("import_backup_btn")
-                                    color: Theme.primaryLight
-                                    font.pixelSize: 11
-                                    font.bold: true
+                                Rectangle {
+                                    width: 150
+                                    height: 34
+                                    radius: 6
+                                    color: impMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surface
+                                    border.color: Theme.primary
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        FaIcon {
+                                            icon: Icons.upload
+                                            size: 11
+                                            iconColor: Theme.primaryLight
+                                        }
+                                        Text {
+                                            text: I18n.t("import_backup_btn")
+                                            color: Theme.primaryLight
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: impMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: Bridge.importData("")
+                                    }
                                 }
 
-                                MouseArea {
-                                    id: impMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Bridge.importData("")
+                                Rectangle {
+                                    width: 150
+                                    height: 34
+                                    radius: 6
+                                    color: impFolderMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : Theme.surface
+                                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        FaIcon {
+                                            icon: Icons.folder
+                                            size: 11
+                                            iconColor: Theme.primaryLight
+                                        }
+                                        Text {
+                                            text: I18n.t("import_folder_btn")
+                                            color: Theme.textSecondary
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: impFolderMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: Bridge.importFolder()
+                                    }
                                 }
                             }
                         }
@@ -978,7 +1023,7 @@ Flickable {
         }
 
         // ---------------------------------------------------------
-        // Card 5: Application Details
+        // Card 5: Application Details (Bilnov, +213776139475, Correct Version)
         // ---------------------------------------------------------
         Rectangle {
             Layout.fillWidth: true
@@ -992,7 +1037,7 @@ Flickable {
                 id: appInfoCol
                 anchors.fill: parent
                 anchors.margins: 16
-                spacing: 10
+                spacing: 12
 
                 Text {
                     text: I18n.t("section_app_info_title")
@@ -1002,7 +1047,10 @@ Flickable {
                 }
 
                 RowLayout {
-                    spacing: 30
+                    spacing: 36
+                    Layout.fillWidth: true
+
+                    // Application Name
                     ColumnLayout {
                         spacing: 2
                         Text {
@@ -1018,6 +1066,7 @@ Flickable {
                         }
                     }
 
+                    // Version
                     ColumnLayout {
                         spacing: 2
                         Text {
@@ -1026,25 +1075,84 @@ Flickable {
                             font.pixelSize: 10
                         }
                         Text {
-                            text: "v1.1.0"
-                            color: Theme.textPrimary
+                            text: Bridge.appVersion || "v1.2.1"
+                            color: Theme.primaryLight
                             font.pixelSize: 12
                             font.bold: true
                         }
                     }
 
+                    // Developed by
                     ColumnLayout {
                         spacing: 2
                         Text {
-                            text: I18n.t("api_server_label")
+                            text: I18n.t("app_developer_label")
                             color: Theme.textMuted
                             font.pixelSize: 10
                         }
+                        RowLayout {
+                            spacing: 6
+                            Rectangle {
+                                width: 18
+                                height: 18
+                                radius: 4
+                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "B"
+                                    color: Theme.primaryLight
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+                            }
+                            Text {
+                                text: "Bilnov"
+                                color: Theme.textPrimary
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                        }
+                    }
+
+                    // Contact Phone Number
+                    ColumnLayout {
+                        spacing: 2
                         Text {
-                            text: "https://bilnov-gallery.bilnov.com/"
-                            color: Theme.primaryLight
-                            font.pixelSize: 12
-                            font.bold: true
+                            text: I18n.t("app_phone_label")
+                            color: Theme.textMuted
+                            font.pixelSize: 10
+                        }
+                        RowLayout {
+                            spacing: 8
+                            Text {
+                                text: "+213776139475"
+                                color: Theme.primaryLight
+                                font.pixelSize: 12
+                                font.family: "Monospace"
+                                font.bold: true
+                            }
+                            Rectangle {
+                                width: 22
+                                height: 22
+                                radius: 4
+                                color: copyPhoneMouse.containsMouse ? Theme.primaryHover : Theme.surfaceElevated
+                                border.color: Theme.border
+                                FaIcon {
+                                    anchors.centerIn: parent
+                                    icon: Icons.copy
+                                    size: 10
+                                    iconColor: copyPhoneMouse.containsMouse ? "white" : Theme.textMuted
+                                }
+                                MouseArea {
+                                    id: copyPhoneMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        Bridge.copyToClipboard("+213776139475")
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -16,7 +16,7 @@ from config import DATA_DIR
 logger = logging.getLogger("library")
 
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
-SUPPORTED_MODEL_EXTS = {".skp", ".obj", ".fbx", ".blend", ".zip", ".rar", ".7z", ".3ds", ".max", ".c4d"}
+SUPPORTED_MODEL_EXTS = {".skp", ".obj", ".fbx", ".blend", ".zip", ".rar", ".7z", ".3ds", ".max", ".c4d", ".glb", ".gltf", ".stl"}
 
 
 def format_bytes(size_bytes: int) -> str:

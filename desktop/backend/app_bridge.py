@@ -198,6 +198,10 @@ class AppBridge(QObject):
 
         self.thread_pool.start(Worker(_task, on_success=_on_success))
 
+    @Property(str, constant=True)
+    def appVersion(self) -> str:
+        return "v1.2.1"
+
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
     # =============================================================
@@ -521,71 +525,216 @@ class AppBridge(QObject):
     @Slot(str, result=bool)
     def importData(self, source_path: str = "") -> bool:
         """
-        Imports and restores metadata, categories, and settings from a JSON backup.
+        Imports 3D model files (.skp, .obj, .fbx, .blend, .glb, .stl, etc.), archives (.zip),
+        asset folders, or backup JSON files directly into the ./data library.
         """
         import json
+        import shutil
+        import zipfile
+        from datetime import datetime
         from PySide6.QtWidgets import QFileDialog
 
-        file_path = source_path.strip()
-        if not file_path:
-            file_path, _ = QFileDialog.getOpenFileName(
+        raw_path = source_path.strip() if source_path else ""
+        selected_files = []
+
+        if not raw_path:
+            files, _ = QFileDialog.getOpenFileNames(
                 None,
-                "Import Bilnov Gallery Data",
+                "Import 3D Assets or Backups into Bilnov Gallery",
                 "",
-                "JSON Files (*.json);;All Files (*.*)",
+                "Supported Files (*.skp *.obj *.fbx *.blend *.glb *.gltf *.stl *.3ds *.max *.c4d *.zip *.rar *.7z *.json);;3D Models (*.skp *.obj *.fbx *.blend *.glb *.gltf *.stl *.3ds *.max *.c4d);;Archives (*.zip *.rar *.7z);;JSON Backups (*.json);;All Files (*.*)",
             )
+            selected_files = [Path(f) for f in files if f.strip()]
+        else:
+            p = Path(raw_path)
+            if p.exists():
+                selected_files = [p]
 
-        if not file_path:
+        if not selected_files:
             return False
 
-        src = Path(file_path)
-        if not src.exists():
-            self.toast.emit("error", f"Selected file does not exist: {src.name}")
-            return False
+        # If a single JSON backup file is selected
+        if len(selected_files) == 1 and selected_files[0].is_file() and selected_files[0].suffix.lower() == ".json":
+            try:
+                with open(selected_files[0], "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and ("models" in data or "preferences" in data or "license" in data):
+                    prefs = data.get("preferences", {})
+                    if "language" in prefs and prefs["language"] in ["en", "fr"]:
+                        self.saveLanguagePreference(prefs["language"])
+
+                    models = data.get("models", [])
+                    restored_count = 0
+                    for item in models:
+                        folder_rel = item.get("folder_path")
+                        if folder_rel:
+                            folder_abs = DATA_DIR / folder_rel
+                            if folder_abs.exists() and folder_abs.is_dir():
+                                meta_file = folder_abs / "metadata.json"
+                                meta_content = {
+                                    "title": item.get("title", folder_abs.name),
+                                    "category": item.get("category", "Uncategorized"),
+                                    "description": item.get("description", ""),
+                                    "tags": item.get("tags", []),
+                                    "author": item.get("author", "Bilnov"),
+                                    "updated_at": item.get("updated_at", ""),
+                                }
+                                try:
+                                    with open(meta_file, "w", encoding="utf-8") as mf:
+                                        json.dump(meta_content, mf, indent=2, ensure_ascii=False)
+                                    restored_count += 1
+                                except Exception:
+                                    pass
+                    self.loadLibrary()
+                    self.loadCategories()
+                    self.toast.emit("success", f"Backup restored! {restored_count} item metadata records updated.")
+                    return True
+            except Exception:
+                pass
+
+        # Import 3D model files, archives, and directories into ./data/Imported/
+        imported_dir = DATA_DIR / "Imported"
+        imported_dir.mkdir(parents=True, exist_ok=True)
+
+        imported_count = 0
+        MODEL_EXTS = {".skp", ".obj", ".fbx", ".blend", ".zip", ".rar", ".7z", ".3ds", ".max", ".c4d", ".glb", ".gltf", ".stl"}
+        IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
         try:
-            with open(src, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            for item_path in selected_files:
+                if not item_path.exists():
+                    continue
 
-            if not isinstance(data, dict):
-                self.toast.emit("error", "Invalid backup format: root must be a JSON object")
-                return False
-
-            # Restore preferences
-            prefs = data.get("preferences", {})
-            if "language" in prefs and prefs["language"] in ["en", "fr"]:
-                self.saveLanguagePreference(prefs["language"])
-
-            # Import/Restore models metadata into ./data folders if folders exist
-            models = data.get("models", [])
-            restored_count = 0
-            for item in models:
-                folder_rel = item.get("folder_path")
-                if folder_rel:
-                    folder_abs = DATA_DIR / folder_rel
-                    if folder_abs.exists() and folder_abs.is_dir():
-                        meta_file = folder_abs / "metadata.json"
-                        meta_content = {
-                            "title": item.get("title", folder_abs.name),
-                            "category": item.get("category", "Uncategorized"),
-                            "description": item.get("description", ""),
-                            "tags": item.get("tags", []),
-                            "author": item.get("author", "Bilnov"),
-                            "updated_at": item.get("updated_at", ""),
+                if item_path.is_dir():
+                    # Direct folder import
+                    target_folder_name = item_path.name
+                    target_folder = imported_dir / target_folder_name
+                    counter = 1
+                    while target_folder.exists():
+                        target_folder = imported_dir / f"{target_folder_name}_{counter}"
+                        counter += 1
+                    shutil.copytree(item_path, target_folder)
+                    meta_path = target_folder / "meta.json"
+                    if not meta_path.exists():
+                        meta = {
+                            "title": target_folder_name.replace("_", " ").replace("-", " ").title(),
+                            "category": "Imported",
+                            "imported_at": datetime.now().isoformat(),
                         }
-                        try:
-                            with open(meta_file, "w", encoding="utf-8") as mf:
-                                json.dump(meta_content, mf, indent=2, ensure_ascii=False)
-                            restored_count += 1
-                        except Exception:
-                            pass
+                        with open(meta_path, "w", encoding="utf-8") as mf:
+                            json.dump(meta, mf, indent=2, ensure_ascii=False)
+                    imported_count += 1
 
-            # Refresh library and categories
+                elif item_path.suffix.lower() == ".zip":
+                    # Zip archive import: extract contents into article folder
+                    item_stem = item_path.stem
+                    target_folder = imported_dir / item_stem
+                    counter = 1
+                    while target_folder.exists():
+                        target_folder = imported_dir / f"{item_stem}_{counter}"
+                        counter += 1
+                    target_folder.mkdir(parents=True, exist_ok=True)
+
+                    with zipfile.ZipFile(item_path, "r") as zf:
+                        zf.extractall(target_folder)
+
+                    meta_path = target_folder / "meta.json"
+                    if not meta_path.exists():
+                        meta = {
+                            "title": item_stem.replace("_", " ").replace("-", " ").title(),
+                            "category": "Imported",
+                            "source_archive": item_path.name,
+                            "imported_at": datetime.now().isoformat(),
+                        }
+                        with open(meta_path, "w", encoding="utf-8") as mf:
+                            json.dump(meta, mf, indent=2, ensure_ascii=False)
+                    imported_count += 1
+
+                elif item_path.suffix.lower() in MODEL_EXTS:
+                    # Single 3D model file import
+                    item_stem = item_path.stem
+                    clean_title = item_stem.replace("_", " ").replace("-", " ").title()
+                    target_folder = imported_dir / item_stem
+                    counter = 1
+                    while target_folder.exists():
+                        target_folder = imported_dir / f"{item_stem}_{counter}"
+                        counter += 1
+                    target_folder.mkdir(parents=True, exist_ok=True)
+
+                    # Create model subdirectory and copy model
+                    model_dir = target_folder / "model"
+                    model_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(item_path, model_dir / item_path.name)
+
+                    # Look for companion materials (.mtl) or preview images (.png, .jpg) in the same directory
+                    parent_dir = item_path.parent
+                    for sibling in parent_dir.iterdir():
+                        if sibling.is_file() and sibling.name != item_path.name:
+                            sib_ext = sibling.suffix.lower()
+                            if sibling.stem.startswith(item_stem):
+                                if sib_ext in IMAGE_EXTS:
+                                    shutil.copy2(sibling, target_folder / sibling.name)
+                                elif sib_ext in {".mtl", ".bin"}:
+                                    shutil.copy2(sibling, model_dir / sibling.name)
+
+                    meta = {
+                        "title": clean_title,
+                        "category": "Imported",
+                        "subcategory": "3D Models",
+                        "model_file": item_path.name,
+                        "imported_at": datetime.now().isoformat(),
+                    }
+                    with open(target_folder / "meta.json", "w", encoding="utf-8") as mf:
+                        json.dump(meta, mf, indent=2, ensure_ascii=False)
+                    imported_count += 1
+
+                elif item_path.suffix.lower() in IMAGE_EXTS:
+                    # Image file import
+                    item_stem = item_path.stem
+                    target_folder = imported_dir / item_stem
+                    counter = 1
+                    while target_folder.exists():
+                        target_folder = imported_dir / f"{item_stem}_{counter}"
+                        counter += 1
+                    target_folder.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(item_path, target_folder / item_path.name)
+                    meta = {
+                        "title": item_stem.replace("_", " ").replace("-", " ").title(),
+                        "category": "Imported",
+                        "imported_at": datetime.now().isoformat(),
+                    }
+                    with open(target_folder / "meta.json", "w", encoding="utf-8") as mf:
+                        json.dump(meta, mf, indent=2, ensure_ascii=False)
+                    imported_count += 1
+
             self.loadLibrary()
             self.loadCategories()
 
-            self.toast.emit("success", f"Import complete! Restored {restored_count} item metadata records from {src.name}")
-            return True
+            if imported_count > 0:
+                self.toast.emit("success", f"Successfully imported {imported_count} asset(s) into the library!")
+                return True
+            else:
+                self.toast.emit("error", "No valid 3D assets or files found to import.")
+                return False
+
         except Exception as e:
+            logger.error("Import failed: %s", e)
             self.toast.emit("error", f"Import failed: {str(e)}")
             return False
+
+    @Slot(result=bool)
+    def importFolder(self) -> bool:
+        """
+        Opens a directory picker to import an entire folder of 3D assets into the library.
+        """
+        from PySide6.QtWidgets import QFileDialog
+        dir_path = QFileDialog.getExistingDirectory(
+            None,
+            "Select 3D Asset Folder to Import into Library",
+            "",
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
+        )
+        if not dir_path:
+            return False
+        return self.importData(dir_path)
+

@@ -53,13 +53,18 @@ def main():
 
     # Set application icon (favicon, taskbar, and window icon)
     from PySide6.QtGui import QIcon
-    icon_ico = base_dir / "assets" / "icon.ico"
-    icon_png = base_dir / "assets" / "icon.png"
+    candidate_icons = [
+        base_dir / "assets" / "icon.ico",
+        base_dir / "assets" / "icon.png",
+        ROOT_DIR / "desktop" / "assets" / "icon.ico",
+        ROOT_DIR / "desktop" / "assets" / "icon.png",
+        ROOT_DIR / "icon.ico",
+        ROOT_DIR / "icon.png",
+    ]
     app_icon = QIcon()
-    if icon_ico.exists() and sys.platform == "win32":
-        app_icon = QIcon(str(icon_ico))
-    elif icon_png.exists():
-        app_icon = QIcon(str(icon_png))
+    for p in candidate_icons:
+        if p.exists():
+            app_icon.addFile(str(p))
 
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)

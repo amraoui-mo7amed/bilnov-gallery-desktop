@@ -144,8 +144,8 @@ elif sys.platform == 'darwin':
         icon=icon_icns,
         bundle_identifier='com.bilnov.gallery',
         info_plist={
-            'CFBundleShortVersionString': '1.1.0',
-            'CFBundleVersion': '1.1.0',
+            'CFBundleShortVersionString': '1.2.1',
+            'CFBundleVersion': '1.2.1',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },
