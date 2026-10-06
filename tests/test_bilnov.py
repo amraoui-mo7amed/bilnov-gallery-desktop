@@ -529,5 +529,49 @@ class TestBilnovGallery(unittest.TestCase):
             TRIAL_FILE_PATH.unlink()
 
 
+    def test_bootstrap_state_fresh_install(self):
+        """A fresh install must show an active trial before any network call."""
+        from desktop.backend import licensing as licensing_mod
+        from desktop.backend.licensing import LicenseManager
+
+        old_trial_path = licensing_mod.TRIAL_FILE_PATH
+        licensing_mod.TRIAL_FILE_PATH = self.tmp_dir / ".bilnov_trial_boot.json"
+        try:
+            lic = LicenseManager(
+                server_url=self.server_url,
+                license_file=self.tmp_dir / "no_license_here.json",
+            )
+            state = lic.bootstrap_state()
+            self.assertTrue(state.is_valid)
+            self.assertEqual(state.status_code, "TRIAL")
+            self.assertIn("30-Day Free Trial", state.message)
+        finally:
+            licensing_mod.TRIAL_FILE_PATH = old_trial_path
+
+    def test_bootstrap_state_expired_trial(self):
+        """Expired trial at bootstrap must not be valid."""
+        import datetime
+        from desktop.backend import licensing as licensing_mod
+        from desktop.backend.licensing import LicenseManager
+
+        old_trial_path = licensing_mod.TRIAL_FILE_PATH
+        licensing_mod.TRIAL_FILE_PATH = self.tmp_dir / ".bilnov_trial_boot2.json"
+        try:
+            lic = LicenseManager(
+                server_url=self.server_url,
+                license_file=self.tmp_dir / "no_license_here2.json",
+            )
+            licensing_mod.TRIAL_FILE_PATH.write_text(json.dumps({
+                "device_id": lic.device_id,
+                "started_at": (datetime.datetime.now(datetime.timezone.utc)
+                               - datetime.timedelta(days=40)).isoformat(),
+            }))
+            state = lic.bootstrap_state()
+            self.assertFalse(state.is_valid)
+            self.assertEqual(state.status_code, "TRIAL_EXPIRED")
+        finally:
+            licensing_mod.TRIAL_FILE_PATH = old_trial_path
+
+
 if __name__ == "__main__":
     unittest.main()

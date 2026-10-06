@@ -87,6 +87,10 @@ class AppBridge(QObject):
         self.lib = library_manager
         self.lic = license_manager
 
+        # First-paint licensing state (trial by default) so the lock overlay
+        # never flashes before the async verify_license() completes.
+        self.lic.bootstrap_state()
+
         # Library state
         self._library_items: List[Dict[str, Any]] = []
         self._library_loading = False

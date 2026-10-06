@@ -261,14 +261,19 @@ class LicenseManager:
 
         return datetime.datetime.now(datetime.timezone.utc), False
 
-    def evaluate_trial_detailed(self) -> Dict[str, Any]:
+    def evaluate_trial_detailed(self, use_network: bool = True) -> Dict[str, Any]:
         """
         Evaluates 30-day free trial using verified network time.
-        Returns detailed dict with days, hours, sync status, and formatted string.
+        When use_network is False only the local clock is used (no blocking HTTP),
+        which keeps startup instant. Returns detailed dict with days, hours,
+        sync status, and formatted string.
         """
         data = self.get_or_create_trial()
         started_str = data.get("started_at", "")
-        now, is_net_synced = self.get_network_time()
+        if use_network:
+            now, is_net_synced = self.get_network_time()
+        else:
+            now, is_net_synced = datetime.datetime.now(datetime.timezone.utc), False
 
         try:
             started_dt = datetime.datetime.fromisoformat(started_str.replace("Z", "+00:00"))
@@ -306,13 +311,84 @@ class LicenseManager:
         self.trial_details = result
         return result
 
-    def evaluate_trial(self) -> Tuple[bool, int, str]:
+    def evaluate_trial(self, use_network: bool = True) -> Tuple[bool, int, str]:
         """
         Evaluates 30-day free trial status.
         Returns: (is_active, days_remaining, message)
         """
-        details = self.evaluate_trial_detailed()
+        details = self.evaluate_trial_detailed(use_network=use_network)
         return details["is_active"], details["days_left"], details["message"]
+
+    def bootstrap_state(self) -> LicenseState:
+        """
+        Synchronous first-paint state, called before the QML engine loads so a
+        fresh install shows its default 30-day trial immediately instead of
+        flashing "Workstation Activation Required". No network I/O here:
+        verify_license() runs asynchronously right after and corrects the state
+        (e.g. REVOKED when the client was deleted server-side).
+        """
+        local_data = self.load_local_license()
+
+        if getattr(self, "_tampered_detected", False):
+            self.current_state = LicenseState(
+                is_valid=False,
+                status_code="NEEDS_ACTIVATION",
+                message="License file corrupted or tampered. Activation required.",
+                device_id=self.device_id,
+            )
+            return self.current_state
+
+        if not local_data:
+            details = self.evaluate_trial_detailed(use_network=False)
+            if details["is_active"]:
+                self.current_state = LicenseState(
+                    is_valid=True,
+                    status_code="TRIAL",
+                    message=details["message"],
+                    device_id=self.device_id,
+                    customer_name=f"Trial Workstation ({details['days_left']}d left)",
+                    offline_days_remaining=details["days_left"],
+                )
+            else:
+                self.current_state = LicenseState(
+                    is_valid=False,
+                    status_code="TRIAL_EXPIRED",
+                    message="30-Day Free Trial has expired. Workstation license required.",
+                    device_id=self.device_id,
+                )
+            return self.current_state
+
+        # Licensed machine: optimistic local state; verify_license() corrects it.
+        expires_str = local_data.get("expires_at")
+        if expires_str:
+            try:
+                expires_dt = datetime.datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
+                if datetime.datetime.now(datetime.timezone.utc) > expires_dt:
+                    self.current_state = LicenseState(
+                        is_valid=False,
+                        status_code="EXPIRED",
+                        message="License expired. Online renewal required.",
+                        license_key=local_data.get("license_key", ""),
+                        device_id=self.device_id,
+                    )
+                    return self.current_state
+            except Exception:
+                pass
+
+        self.current_state = LicenseState(
+            is_valid=True,
+            status_code="ACTIVE",
+            message="Verifying license...",
+            license_key=local_data.get("license_key", ""),
+            device_id=self.device_id,
+            customer_name=local_data.get("customer_name", ""),
+            customer_email=local_data.get("customer_email", ""),
+            customer_phone=local_data.get("customer_phone", ""),
+            expires_at=local_data.get("expires_at"),
+            last_verified_at=local_data.get("last_verified_at"),
+            signature=local_data.get("signature"),
+        )
+        return self.current_state
 
     # -------------------------------------------------------------
     # Lifecycle Workflows
