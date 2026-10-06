@@ -101,7 +101,7 @@ Rectangle {
             if (!root.visible) return
             root.isSubmitting = false
             if (success) root.opacity = 0
-            else root.errorMessage = msg
+            else root.errorMessage = I18n.tMsg(msg)
         }
     }
 

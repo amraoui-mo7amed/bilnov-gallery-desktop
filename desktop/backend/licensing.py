@@ -2,12 +2,13 @@
 Bilnov Gallery Desktop Client Integration & Licensing API Client
 Strictly implements the complete licensing lifecycle specified in openapi.json:
 
-1. Administrative Access Control (X-Admin-Key)
+1. Public Machine-to-Machine Access (no administrator credentials required)
 2. First Launch (Initial Activation) with 64-char deterministic hardware ID (device_id)
    and storage in ~/.zed_license.json
-3. Verification Handshake with 7-Day Offline Grace Period (OFFLINE_GRACE)
+3. Verification Handshake with 30-Day Offline Grace Period (OFFLINE_GRACE)
 4. Runtime Heartbeat (every 4 hours)
 5. Cryptographic Anti-Tampering (HMAC-SHA256 signature and atomic disk storage)
+6. Client Registration & Inquiry (/api/v1/client/profile, /api/v1/client/status)
 """
 
 import datetime
@@ -28,7 +29,6 @@ from typing import Any, Dict, Optional, Tuple
 import requests
 
 from config import (
-    ADMIN_KEY,
     LICENSE_FILE_PATH,
     LICENSE_SERVER_URL,
     OFFLINE_GRACE_DAYS,
@@ -145,23 +145,9 @@ class LicenseManager:
         self.device_id = get_deterministic_device_id()
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "BilnovGalleryDesktop/1.0.0"})
-        self.admin_key = ADMIN_KEY
-        if self.admin_key:
-            self.session.headers.update({"X-Admin-Key": self.admin_key})
 
         self.current_state = LicenseState(device_id=self.device_id)
         self.trial_details: Dict[str, Any] = {}
-
-    def set_admin_key(self, admin_key: str):
-        """Sets and persists an optional X-Admin-Key for API server authentication."""
-        self.admin_key = admin_key.strip()
-        if self.admin_key:
-            self.session.headers.update({"X-Admin-Key": self.admin_key})
-        elif "X-Admin-Key" in self.session.headers:
-            del self.session.headers["X-Admin-Key"]
-        local_data = self.load_local_license() or {}
-        local_data["admin_key"] = self.admin_key
-        self.save_local_license(local_data)
 
     # -------------------------------------------------------------
     # Disk Storage Helpers (Atomic read/write ~/.zed_license.json)
@@ -176,10 +162,8 @@ class LicenseManager:
             with open(self.license_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Load persisted admin key if not already set via environment
-            if not self.admin_key and data.get("admin_key"):
-                self.admin_key = data.get("admin_key")
-                self.session.headers.update({"X-Admin-Key": self.admin_key})
+            # Drop legacy admin key field from older license files (auth is no longer required)
+            data.pop("admin_key", None)
 
             # Anti-tampering check: verify checksum
             saved_checksum = data.get("checksum")
@@ -337,40 +321,44 @@ class LicenseManager:
     def activate_license(
         self,
         license_key: str,
-        name: str,
-        email: str,
-        phone: str,
+        name: str = "",
+        email: str = "",
+        phone: str = "",
         address: str = "",
     ) -> Tuple[bool, str]:
         """
         Initial Activation (POST /api/v1/license/activate)
-        Enforces mandatory customer details and registers hardware binding.
+        Binds the hardware fingerprint to the license. Customer details are optional
+        (ActivateLicenseIn.customer); whenever supplied they must be complete and valid.
         """
         key = license_key.strip()
         cust_name = name.strip()
         cust_email = email.strip()
         cust_phone = phone.strip()
 
-        # Schema Validation
+        # Schema Validation (license_key + device_id required, customer optional)
         if len(key) < 10:
             return False, "License key format invalid (min 10 characters)"
-        if len(cust_name) < 2:
-            return False, "Full Name must be at least 2 characters"
-        if len(cust_email) < 5 or "@" not in cust_email:
-            return False, "Valid email address is mandatory"
-        if len(cust_phone) < 6:
-            return False, "Contact phone number must be at least 6 digits"
 
-        payload = {
+        payload: Dict[str, Any] = {
             "license_key": key,
             "device_id": self.device_id,
-            "customer": {
+        }
+
+        if cust_name or cust_email or cust_phone:
+            # CustomerDetailsSchema requires name, email and phone whenever customer is present
+            if len(cust_name) < 2:
+                return False, "Full Name must be at least 2 characters"
+            if len(cust_email) < 5 or "@" not in cust_email:
+                return False, "Valid email address is mandatory"
+            if len(cust_phone) < 6:
+                return False, "Contact phone number must be at least 6 digits"
+            payload["customer"] = {
                 "name": cust_name,
                 "email": cust_email,
                 "phone": cust_phone,
                 "address": address.strip(),
-            },
-        }
+            }
 
         url = f"{self.server_url}/api/v1/license/activate"
         try:
@@ -410,7 +398,10 @@ class LicenseManager:
             )
             return True, data.get("message", "License successfully activated!")
         elif resp.status_code == 401:
-            msg = "Licensing server returned HTTP 401 (Unauthorized). Please provide a valid Admin / API key or contact support (+213776139475)."
+            msg = (
+                "Licensing server returned HTTP 401 (Unauthorized). "
+                "Please contact support (+213775189229 / +213796629314)."
+            )
             logger.warning(msg)
             return False, msg
         else:
@@ -421,7 +412,7 @@ class LicenseManager:
         """
         Verification Handshake (POST /api/v1/license/verify)
         Checks local checksum, binds to device_id, and synchronizes status with server.
-        Permits 7-Day Offline Grace Period if server is unreachable.
+        Permits 30-Day Offline Grace Period if server is unreachable.
         """
         local_data = self.load_local_license()
         if getattr(self, "_tampered_detected", False):
@@ -565,7 +556,7 @@ class LicenseManager:
         self.current_state = LicenseState(
             is_valid=False,
             status_code="OFFLINE_EXPIRED",
-            message="7-Day Offline Grace Period has expired. Please connect to internet to verify license.",
+            message="30-Day Offline Grace Period has expired. Please connect to internet to verify license.",
             license_key=key,
             device_id=self.device_id,
         )
@@ -673,10 +664,92 @@ class LicenseManager:
             )
             return False, msg
 
+    # -------------------------------------------------------------
+    # Client Registration & Inquiry (openapi.json)
+    # -------------------------------------------------------------
+
+    def register_client_profile(
+        self,
+        name: str,
+        email: str,
+        phone: str,
+        address: str = "",
+    ) -> Tuple[bool, str]:
+        """
+        Client Registration (POST /api/v1/client/profile)
+        Creates the Customer profile so an administrator can generate and deliver
+        a license key. Public machine-to-machine endpoint: no admin credentials.
+        """
+        cust_name = name.strip()
+        cust_email = email.strip()
+        cust_phone = phone.strip()
+
+        # ClientProfileIn schema validation
+        if len(cust_name) < 2:
+            return False, "Full Name must be at least 2 characters"
+        if len(cust_email) < 5 or "@" not in cust_email:
+            return False, "Valid email address is mandatory"
+        if len(cust_phone) < 6:
+            return False, "Contact phone number must be at least 6 digits"
+
+        payload: Dict[str, Any] = {
+            "name": cust_name,
+            "email": cust_email,
+            "phone": cust_phone,
+            "address": address.strip(),
+            "device_id": self.device_id,
+        }
+
+        url = f"{self.server_url}/api/v1/client/profile"
+        try:
+            resp = self.session.post(url, json=payload, timeout=12)
+            data = resp.json() if resp.text else {}
+        except Exception as e:
+            logger.error("Client profile registration failed: %s", e)
+            return False, f"Server connection failed: {str(e)}"
+
+        success = bool(data.get("success")) and resp.status_code == 201
+        if not success:
+            msg = data.get("message") or f"Registration rejected (HTTP {resp.status_code})"
+            logger.warning("Client profile registration rejected: %s", msg)
+            return False, msg
+        return True, data.get("message") or "Profile registered. Wait for an administrator to generate your license key."
+
+    def query_client_status(self, query: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Client Status Inquiry (GET /api/v1/client/status?query=...)
+        Looks up registration and license status by device ID, email, or phone:
+        PENDING_LICENSE / ACTIVE / UNBOUND / EXPIRED.
+        Returns: (success, message, payload)
+        """
+        q = (query or "").strip()
+        if not q:
+            return False, "Provide an email address, phone number or device ID", {}
+
+        url = f"{self.server_url}/api/v1/client/status"
+        try:
+            resp = self.session.get(url, params={"query": q}, timeout=10)
+            data = resp.json() if resp.text else {}
+        except Exception as e:
+            logger.error("Client status inquiry failed: %s", e)
+            return False, f"Server connection failed: {str(e)}", {}
+
+        if not isinstance(data, dict):
+            return False, f"Status inquiry failed (HTTP {resp.status_code})", {}
+
+        success = bool(data.get("success"))
+        if not success:
+            msg = data.get("message") or f"Status inquiry failed (HTTP {resp.status_code})"
+            return False, msg, data
+
+        status_code = str(data.get("status_code") or "").upper()
+        msg = data.get("message") or f"Status: {status_code}"
+        return True, msg, data
+
     def query_status_remote(self, license_key: str) -> Optional[Dict[str, Any]]:
         """
         Administrative & Diagnostic Status Inquiry (GET /api/v1/license/status/{license_key})
-        Requires active administrator session or X-Admin-Key header.
+        Public machine-to-machine endpoint: no administrator credentials required.
         """
         url = f"{self.server_url}/api/v1/license/status/{license_key.strip()}"
         try:

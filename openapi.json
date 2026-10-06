@@ -3,9 +3,157 @@
   "info": {
     "title": "Bilnov Gallery License Management & Desktop Client API",
     "version": "1.0.0",
-    "description": "\n### Bilnov Gallery Desktop Client Integration & Licensing API\n\nThis REST API manages the complete licensing lifecycle for the Bilnov Gallery Desktop Client application.\n\n#### Comprehensive Desktop Client Workflow:\n1. **Administrative Access Control**:\n   - Access to this API is restricted exclusively to platform administrators and authorized client runtimes.\n   - Every request requires either an active administrator session or an `X-Admin-Key` header matching the platform secret.\n   - Interactive OpenAPI Swagger documentation (`/api/v1/docs`) is protected and viewable solely by authenticated administrators.\n\n2. **First Launch (Initial Activation)**:\n   - Derives a 64-character deterministic SHA-256 hardware identifier (`device_id`).\n   - Checks local storage file (`~/.zed_license.json`). If missing or corrupted, prompts the user with `ActivationDialog`.\n   - Forces the customer to provide their full legal Name, valid Email address, and Phone number before activating.\n   - Calls `POST /api/v1/license/activate`. On success, binds the license to the requesting hardware and updates the Customer record in the central database.\n   - Atomically writes license details, verification timestamp, and cryptographic HMAC-SHA256 signature to disk.\n\n3. **Subsequent Launches (Verification Handshake)**:\n   - Validates local file checksum and matches the local hardware fingerprint.\n   - Calls `POST /api/v1/license/verify` to synchronize status and obtain any administrator extensions or status updates.\n   - If the server is unreachable due to network failure, permits a **7-Day Offline Grace Period** (`OFFLINE_GRACE`).\n   - If the license was locally expired but extended on the server, online verification immediately re-activates the desktop client.\n\n4. **Runtime Heartbeat**:\n   - Background timer queries `POST /api/v1/license/heartbeat` periodically (every 4 hours).\n   - Immediately locks the UI if an administrator revokes or disables the license from the dashboard.\n\n5. **Cryptographic Anti-Tampering**:\n   - Every server response includes an HMAC-SHA256 signature generated using the server's private secret.\n   - Protects against proxy manipulation (MITM) and client-side memory alteration.\n"
+    "description": "\n### Bilnov Gallery Desktop Client Integration & Licensing API\n\nThis REST API manages the complete licensing lifecycle for the Bilnov Gallery Desktop Client application.\n\n#### Comprehensive Desktop Client Workflow:\n1. **Access Control**:\n   - All license endpoints are public machine-to-machine APIs and never require administrator credentials.\n   - Integrity is ensured by the HMAC-SHA256 signature included in every response.\n   - Interactive OpenAPI Swagger documentation (`/api/v1/docs`) is protected and viewable solely by authenticated administrators.\n\n2. **First Launch (Initial Activation)**:\n   - Derives a 64-character deterministic SHA-256 hardware identifier (`device_id`).\n   - Checks local storage file (`~/.zed_license.json`). If missing or corrupted, prompts the user with `ActivationDialog`.\n   - Forces the customer to provide their full legal Name, valid Email address, and Phone number before activating.\n   - Calls `POST /api/v1/license/activate`. On success, binds the license to the requesting hardware and updates the Customer record in the central database.\n   - Atomically writes license details, verification timestamp, and cryptographic HMAC-SHA256 signature to disk.\n\n3. **Subsequent Launches (Verification Handshake)**:\n   - Validates local file checksum and matches the local hardware fingerprint.\n   - Calls `POST /api/v1/license/verify` to synchronize status and obtain any administrator extensions or status updates.\n   - If the server is unreachable due to network failure, permits a **30-Day Offline Grace Period** (`OFFLINE_GRACE`).\n   - If the license was locally expired but extended on the server, online verification immediately re-activates the desktop client.\n\n4. **Runtime Heartbeat**:\n   - Background timer queries `POST /api/v1/license/heartbeat` periodically (every 4 hours).\n   - Immediately locks the UI if an administrator revokes or disables the license from the dashboard.\n\n5. **Cryptographic Anti-Tampering**:\n   - Every server response includes an HMAC-SHA256 signature generated using the server's private secret.\n   - Protects against proxy manipulation (MITM) and client-side memory alteration.\n"
   },
   "paths": {
+    "/api/v1/client/profile": {
+      "post": {
+        "operationId": "api_create_client_profile",
+        "summary": "Client sends request to create client profile",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientProfileOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientProfileOut"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientProfileOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Client sends a request to create a client profile:\n1. Validates full name, email, and phone/WhatsApp number.\n2. Ensures unique email and phone constraints.\n3. Creates the Customer profile.\n4. Automatically notifies platform administrators (with live SSE and in-app notifications).\n5. Instructs client to wait for an administrator to generate and deliver the license key.",
+        "tags": [
+          "Client Registration & Inquiry"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientProfileIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/client/register": {
+      "post": {
+        "operationId": "api_register_client_profile",
+        "summary": "Client register profile alias",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientProfileOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientProfileOut"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientProfileOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Client Registration & Inquiry"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientProfileIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/client/status": {
+      "get": {
+        "operationId": "dashboard_api_api_client_status",
+        "summary": "Client check license and profile status by email, phone, or device ID",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "title": "Query",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientStatusOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Look up client registration and license status using device ID, email, or phone:\n- If customer profile submitted but license not generated yet -\u003E PENDING_LICENSE\n- If license exists and active -\u003E ACTIVE (or UNBOUND if awaiting first device activation)\n- If license expired -\u003E EXPIRED with instruction to contact administration via Phone/WhatsApp",
+        "tags": [
+          "Client Registration & Inquiry"
+        ]
+      }
+    },
     "/api/v1/license/activate": {
       "post": {
         "operationId": "dashboard_api_api_activate_license",
@@ -43,7 +191,7 @@
             }
           }
         },
-        "description": "Activate a license on initial desktop client launch:\n1. Validates format of license key, hardware fingerprint, and customer details.\n2. Enforces mandatory customer details (Full Name min 2 chars, valid Email, Phone min 6 digits).\n3. Verifies license is active and unexpired.\n4. Binds the unique hardware device fingerprint to the license (or validates same machine).\n5. Updates the Customer profile record in the database with submitted contact info.\n6. Generates an HMAC-SHA256 digital signature to verify authenticity on client side.",
+        "description": "Activate a license on initial desktop client launch:\n1. Validates format of license key, hardware fingerprint, and optional customer details.\n2. Verifies license is active and unexpired.\n3. Binds the unique hardware device fingerprint to the license (or validates same machine).\n4. Sets 30-day activation duration.\n5. Updates the Customer profile record in the database if contact info submitted.\n6. Generates an HMAC-SHA256 digital signature to verify authenticity on client side.",
         "tags": [
           "Desktop License Lifecycle"
         ],
@@ -56,12 +204,7 @@
             }
           },
           "required": true
-        },
-        "security": [
-          {
-            "AdminAuth": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/license/verify": {
@@ -114,12 +257,7 @@
             }
           },
           "required": true
-        },
-        "security": [
-          {
-            "AdminAuth": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/license/heartbeat": {
@@ -162,12 +300,7 @@
             }
           },
           "required": true
-        },
-        "security": [
-          {
-            "AdminAuth": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/license/status/{license_key}": {
@@ -212,17 +345,253 @@
         "description": "Administrative and diagnostic status inquiry for any license key in the system.",
         "tags": [
           "Diagnostic & Inquiry"
-        ],
-        "security": [
-          {
-            "AdminAuth": []
-          }
         ]
       }
     }
   },
   "components": {
     "schemas": {
+      "ClientProfileOut": {
+        "properties": {
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "status_code",
+          "message",
+          "server_time"
+        ],
+        "title": "ClientProfileOut",
+        "type": "object"
+      },
+      "ClientProfileIn": {
+        "properties": {
+          "name": {
+            "description": "Customer full name",
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "email": {
+            "description": "Customer email address",
+            "minLength": 5,
+            "title": "Email",
+            "type": "string"
+          },
+          "phone": {
+            "description": "Customer contact phone / WhatsApp number",
+            "minLength": 6,
+            "title": "Phone",
+            "type": "string"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "description": "Customer physical address",
+            "title": "Address"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client machine hardware fingerprint",
+            "title": "Device Id"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "phone"
+        ],
+        "title": "ClientProfileIn",
+        "type": "object"
+      },
+      "ClientStatusOut": {
+        "properties": {
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "customer_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Phone"
+          },
+          "customer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Email"
+          },
+          "license_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Key"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "is_active": {
+            "default": false,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_expired": {
+            "default": false,
+            "title": "Is Expired",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "contact_admin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Admin"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "status_code",
+          "message",
+          "server_time"
+        ],
+        "title": "ClientStatusOut",
+        "type": "object"
+      },
       "ActivateLicenseOut": {
         "properties": {
           "success": {
@@ -321,14 +690,20 @@
             "type": "string"
           },
           "customer": {
-            "$ref": "#/components/schemas/CustomerDetailsSchema",
-            "description": "Mandatory customer details"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerDetailsSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional customer details"
           }
         },
         "required": [
           "license_key",
-          "device_id",
-          "customer"
+          "device_id"
         ],
         "title": "ActivateLicenseIn",
         "type": "object"
@@ -585,13 +960,6 @@
         ],
         "title": "LicenseStatusOut",
         "type": "object"
-      }
-    },
-    "securitySchemes": {
-      "AdminAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Admin-Key"
       }
     }
   },

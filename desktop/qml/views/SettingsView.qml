@@ -16,6 +16,21 @@ Flickable {
         policy: ScrollBar.AsNeeded
     }
 
+    property string clientStatusText: ""
+
+    Connections {
+        target: Bridge
+        function onClientStatusResult(success, statusCode, msg, licenseKey) {
+            root.clientStatusText = I18n.tMsg(statusCode) + " — " + I18n.tMsg(msg);
+            if (licenseKey.length > 0 && licKeyInput.text.length === 0) {
+                licKeyInput.text = licenseKey;
+            }
+        }
+        function onClientProfileResult(success, msg) {
+            root.clientStatusText = I18n.tMsg(msg);
+        }
+    }
+
     ColumnLayout {
         id: contentCol
         anchors.left: parent.left
@@ -588,50 +603,26 @@ Flickable {
                         font.pixelSize: 11
                     }
 
+                    Text {
+                        text: I18n.t("section_details_title")
+                        color: Theme.textSecondary
+                        font.pixelSize: 11
+                        font.bold: true
+                        Layout.topMargin: 6
+                    }
+                    Text {
+                        text: I18n.t("section_details_desc")
+                        color: Theme.textMuted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
                     GridLayout {
                         columns: 2
                         columnSpacing: 14
                         rowSpacing: 10
                         Layout.fillWidth: true
-
-                        // License Key Input
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.columnSpan: 2
-                            spacing: 4
-                            Text {
-                                text: I18n.t("license_key_label")
-                                color: Theme.textSecondary
-                                font.pixelSize: 11
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 36
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: licKeyInput.activeFocus ? Theme.primary : Theme.border
-                                TextInput {
-                                    id: licKeyInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 12
-                                    font.family: "Monospace"
-                                    selectByMouse: true
-                                    Text {
-                                        text: I18n.t("license_key_placeholder")
-                                        color: Theme.textMuted
-                                        font.pixelSize: 12
-                                        font.family: "Monospace"
-                                        visible: !licKeyInput.text && !licKeyInput.activeFocus
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
 
                         // Full Name Input
                         ColumnLayout {
@@ -776,114 +767,256 @@ Flickable {
                                 }
                             }
                         }
+                    }
 
-                        // API / Admin Key Input (Optional)
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.columnSpan: 2
-                            spacing: 4
-                            Text {
-                                text: I18n.t("admin_key_label")
-                                color: Theme.textSecondary
-                                font.pixelSize: 11
+                    // Request Key / Check Status
+                    RowLayout {
+                        Layout.topMargin: 6
+                        spacing: 8
+
+                        Rectangle {
+                            width: registerBtnRow.implicitWidth + 28
+                            height: 40
+                            radius: 8
+                            color: registerMouse.containsMouse ? Theme.primaryHover : Theme.primary
+
+                            RowLayout {
+                                id: registerBtnRow
+                                anchors.centerIn: parent
+                                spacing: 8
+                                FaIcon {
+                                    icon: Icons.plus
+                                    size: 12
+                                    iconColor: "white"
+                                }
+                                Text {
+                                    text: I18n.t("register_btn")
+                                    color: "white"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 36
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: adminKeyInput.activeFocus ? Theme.primary : Theme.border
-                                TextInput {
-                                    id: adminKeyInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
+
+                            MouseArea {
+                                id: registerMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    var name = nameInput.text.trim();
+                                    var email = emailInput.text.trim();
+                                    var phone = phoneInput.text.trim();
+                                    var addr = addrInput.text.trim();
+
+                                    if (name.length < 2) {
+                                        Bridge.toast("error", I18n.t("val_name_err"));
+                                        return;
+                                    }
+                                    if (email.length < 5 || email.indexOf("@") === -1) {
+                                        Bridge.toast("error", I18n.t("val_email_err"));
+                                        return;
+                                    }
+                                    if (phone.length < 6 || phone.indexOf("+213") !== 0) {
+                                        Bridge.toast("error", I18n.t("val_phone_err"));
+                                        return;
+                                    }
+
+                                    root.clientStatusText = "";
+                                    Bridge.registerClientProfile(name, email, phone, addr);
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: statusBtnRow.implicitWidth + 28
+                            height: 40
+                            radius: 8
+                            color: statusMouse.containsMouse ? Theme.surfaceElevated : Theme.surface
+                            border.color: Theme.border
+
+                            RowLayout {
+                                id: statusBtnRow
+                                anchors.centerIn: parent
+                                spacing: 8
+                                FaIcon {
+                                    icon: Icons.sync
+                                    size: 12
+                                    iconColor: Theme.textMuted
+                                }
+                                Text {
+                                    text: I18n.t("check_status_btn")
                                     color: Theme.textPrimary
                                     font.pixelSize: 12
-                                    font.family: "Monospace"
-                                    selectByMouse: true
-                                    text: Bridge.adminKey
-                                    onEditingFinished: {
-                                        Bridge.setAdminKey(text.trim())
-                                    }
-                                    Text {
-                                        text: I18n.t("admin_key_placeholder")
-                                        color: Theme.textMuted
+                                    font.bold: true
+                                }
+                            }
+
+                            MouseArea {
+                                id: statusMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    var query = emailInput.text.trim() || phoneInput.text.trim() || Bridge.deviceId;
+                                    root.clientStatusText = "";
+                                    Bridge.checkClientStatus(query);
+                                }
+                            }
+                        }
+                    }
+
+                    // -------------------------------------------------
+                    // Already have a key: key input + Activate button
+                    // -------------------------------------------------
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: haveKeyCol.implicitHeight + 28
+                        radius: 8
+                        color: Theme.surfaceElevated
+                        border.color: Theme.border
+
+                        ColumnLayout {
+                            id: haveKeyCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 8
+
+                            Text {
+                                text: I18n.t("section_have_key_title")
+                                color: Theme.textPrimary
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                            Text {
+                                text: I18n.t("section_have_key_desc")
+                                color: Theme.textMuted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            // License Key Input
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Text {
+                                    text: I18n.t("license_key_label")
+                                    color: Theme.textSecondary
+                                    font.pixelSize: 11
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 36
+                                    radius: 6
+                                    color: Theme.surface
+                                    border.color: licKeyInput.activeFocus ? Theme.primary : Theme.border
+                                    TextInput {
+                                        id: licKeyInput
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10
+                                        anchors.rightMargin: 10
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: Theme.textPrimary
                                         font.pixelSize: 12
                                         font.family: "Monospace"
-                                        visible: !adminKeyInput.text && !adminKeyInput.activeFocus
+                                        selectByMouse: true
+                                        Text {
+                                            text: I18n.t("license_key_placeholder")
+                                            color: Theme.textMuted
+                                            font.pixelSize: 12
+                                            font.family: "Monospace"
+                                            visible: !licKeyInput.text && !licKeyInput.activeFocus
+                                            anchors.fill: parent
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Activate Workstation
+                            RowLayout {
+                                Layout.topMargin: 6
+                                spacing: 8
+
+                                Rectangle {
+                                    width: 180
+                                    height: 40
+                                    radius: 8
+                                    color: activateMouse.containsMouse ? Theme.primaryHover : Theme.primary
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 8
+                                        FaIcon {
+                                            icon: Icons.key
+                                            size: 12
+                                            iconColor: "white"
+                                        }
+                                        Text {
+                                            text: I18n.t("activate_btn")
+                                            color: "white"
+                                            font.pixelSize: 12
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: activateMouse
                                         anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            var key = licKeyInput.text.trim();
+                                            var name = nameInput.text.trim();
+                                            var email = emailInput.text.trim();
+                                            var phone = phoneInput.text.trim();
+                                            var addr = addrInput.text.trim();
+
+                                            if (key.length < 10) {
+                                                Bridge.toast("error", I18n.t("val_key_err"));
+                                                return;
+                                            }
+                                            // Customer details are optional (openapi.json); when any is
+                                            // provided, CustomerDetailsSchema requires all three.
+                                            if (name.length > 0 || email.length > 0 || phone.length > 0) {
+                                                if (name.length < 2) {
+                                                    Bridge.toast("error", I18n.t("val_name_err"));
+                                                    return;
+                                                }
+                                                if (email.length < 5 || email.indexOf("@") === -1) {
+                                                    Bridge.toast("error", I18n.t("val_email_err"));
+                                                    return;
+                                                }
+                                                if (phone.length < 6 || phone.indexOf("+213") !== 0) {
+                                                    Bridge.toast("error", I18n.t("val_phone_err"));
+                                                    return;
+                                                }
+                                            }
+
+                                            Bridge.activateLicense(key, name, email, phone, addr);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Activate Button
-                    Rectangle {
-                        Layout.topMargin: 6
-                        width: 180
-                        height: 40
-                        radius: 8
-                        color: activateMouse.containsMouse ? Theme.primaryHover : Theme.primary
-
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: 8
-                            FaIcon {
-                                icon: Icons.key
-                                size: 12
-                                iconColor: "white"
-                            }
-                            Text {
-                                text: I18n.t("activate_btn")
-                                color: "white"
-                                font.pixelSize: 12
-                                font.bold: true
-                            }
-                        }
-
-                        MouseArea {
-                            id: activateMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                var key = licKeyInput.text.trim();
-                                var name = nameInput.text.trim();
-                                var email = emailInput.text.trim();
-                                var phone = phoneInput.text.trim();
-                                var addr = addrInput.text.trim();
-
-                                if (key.length < 10) {
-                                    Bridge.toast("error", I18n.t("val_key_err"));
-                                    return;
-                                }
-                                if (name.length < 2) {
-                                    Bridge.toast("error", I18n.t("val_name_err"));
-                                    return;
-                                }
-                                if (email.length < 5 || email.indexOf("@") === -1) {
-                                    Bridge.toast("error", I18n.t("val_email_err"));
-                                    return;
-                                }
-                                if (phone.length < 6) {
-                                    Bridge.toast("error", I18n.t("val_phone_err"));
-                                    return;
-                                }
-
-                                Bridge.activateLicense(key, name, email, phone, addr);
-                            }
-                        }
+                    Text {
+                        visible: root.clientStatusText.length > 0
+                        text: root.clientStatusText
+                        color: Theme.textMuted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
                     }
                 }
             }
         }
 
         // ---------------------------------------------------------
-        // Card 5: Application Details (Bilnov, +213776139475, Correct Version)
+        // Card 5: Application Details (Bilnov, contact numbers, Correct Version)
         // ---------------------------------------------------------
         Rectangle {
             Layout.fillWidth: true
@@ -935,7 +1068,7 @@ Flickable {
                             font.pixelSize: 10
                         }
                         Text {
-                            text: Bridge.appVersion || "v1.3.0"
+                            text: Bridge.appVersion || "v1.4.0"
                             color: Theme.primaryLight
                             font.pixelSize: 12
                             font.bold: true
@@ -974,42 +1107,45 @@ Flickable {
                         }
                     }
 
-                    // Contact Phone Number
+                    // Contact Phone Numbers
                     ColumnLayout {
-                        spacing: 2
+                        spacing: 4
                         Text {
                             text: I18n.t("app_phone_label")
                             color: Theme.textMuted
                             font.pixelSize: 10
                         }
-                        RowLayout {
-                            spacing: 8
-                            Text {
-                                text: "+213776139475"
-                                color: Theme.primaryLight
-                                font.pixelSize: 12
-                                font.family: "Monospace"
-                                font.bold: true
-                            }
-                            Rectangle {
-                                width: 22
-                                height: 22
-                                radius: 4
-                                color: copyPhoneMouse.containsMouse ? Theme.primaryHover : Theme.surfaceElevated
-                                border.color: Theme.border
-                                FaIcon {
-                                    anchors.centerIn: parent
-                                    icon: Icons.copy
-                                    size: 10
-                                    iconColor: copyPhoneMouse.containsMouse ? "white" : Theme.textMuted
+                        Repeater {
+                            model: ["+213775189229", "+213796629314"]
+                            RowLayout {
+                                spacing: 8
+                                Text {
+                                    text: modelData
+                                    color: Theme.primaryLight
+                                    font.pixelSize: 12
+                                    font.family: "Monospace"
+                                    font.bold: true
                                 }
-                                MouseArea {
-                                    id: copyPhoneMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        Bridge.copyToClipboard("+213776139475")
+                                Rectangle {
+                                    width: 22
+                                    height: 22
+                                    radius: 4
+                                    color: copyPhoneMouse.containsMouse ? Theme.primaryHover : Theme.surfaceElevated
+                                    border.color: Theme.border
+                                    FaIcon {
+                                        anchors.centerIn: parent
+                                        icon: Icons.copy
+                                        size: 10
+                                        iconColor: copyPhoneMouse.containsMouse ? "white" : Theme.textMuted
+                                    }
+                                    MouseArea {
+                                        id: copyPhoneMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            Bridge.copyToClipboard(modelData)
+                                        }
                                     }
                                 }
                             }

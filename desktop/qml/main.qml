@@ -31,7 +31,7 @@ ApplicationWindow {
     Connections {
         target: Bridge
         function onToast(type, msg) {
-            toastWidget.showToast(type, msg)
+            toastWidget.showToast(type, I18n.tMsg(msg))
         }
     }
 

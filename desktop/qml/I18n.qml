@@ -131,9 +131,28 @@ Item {
             "btn_copied": "Copied!",
 
             "activate_section_title": "Activate or Change License",
-            "activate_section_desc": "Enter your official Bilnov Gallery workstation key to remove trial limits.",
+            "activate_section_desc": "No key yet? Submit your details and we deliver the activation key to you by WhatsApp / phone. Already have a key? Use the section below.",
+            "section_details_title": "Your details",
+            "section_details_desc": "Required to request your license key — it is sent to you by WhatsApp / phone.",
+            "section_have_key_title": "Already have a key?",
+            "section_have_key_desc": "Enter your activation key to activate this workstation.",
             "activate_btn": "Activate Workstation",
+            "btn_activate": "Activate",
             "btn_activating": "Activating with Licensing Server...",
+            "btn_requesting": "Sending your details...",
+            "register_btn": "Request License Key",
+            "check_status_btn": "Check Status",
+            "seg_step1": "1 · Request Key",
+            "seg_step2": "2 · Activate",
+            "step1_title": "Step 1 — Request your license key",
+            "step1_desc": "Send your contact details. Your activation key will be delivered to you on this number by WhatsApp / phone.",
+            "step2_title": "Step 2 — Activate your workstation",
+            "step2_desc": "Enter the activation key you received by WhatsApp / phone.",
+            "submit_details_btn": "Send Details & Request Key",
+            "whatsapp_delivery_note": "Your activation key will be sent to you on this phone number via WhatsApp.",
+            "link_have_key": "I already have my key →",
+            "link_need_key": "← No key yet? Request one",
+            "activate_flow_hint": "No key yet? Submit your details in the activation window — the activation key is sent by WhatsApp / phone.",
 
             "section_backup_title": "Library Data & Asset Import",
             "section_backup_desc": "Export your library metadata backup, or import 3D models and archives into your local gallery.",
@@ -149,7 +168,7 @@ Item {
             "app_developer_label": "Developed by",
             "app_developer_value": "Bilnov",
             "app_phone_label": "Phone / Contact",
-            "app_phone_value": "+213776139475",
+            "app_phone_value": "+213775189229",
 
             // Activation Dialog / Fields
             "activation_title": "Bilnov Gallery Activation",
@@ -157,20 +176,18 @@ Item {
             "device_fingerprint": "DEVICE HARDWARE FINGERPRINT (SHA-256)",
             "license_key_label": "License Key *",
             "license_key_placeholder": "BILNOV-XXXX-XXXX-XXXX",
-            "customer_name_label": "Customer Full Name *",
+            "customer_name_label": "Customer Full Name",
             "customer_name_placeholder": "e.g. Sarah Connor",
-            "email_label": "Customer Email Address *",
+            "email_label": "Customer Email Address",
             "email_placeholder": "name@company.com",
-            "phone_label": "Contact Phone Number *",
-            "phone_placeholder": "+1 555 123 4567",
+            "phone_label": "Contact Phone Number",
+            "phone_placeholder": "+213 555 55 55 55",
             "address_label": "Physical Address (Optional)",
             "address_placeholder": "City, Country",
-            "admin_key_label": "API / Admin Key (Optional - for licensing server auth)",
-            "admin_key_placeholder": "X-Admin-Key (optional)",
             "val_key_err": "Please enter a valid License Key (min 10 characters)",
             "val_name_err": "Full Name must be at least 2 characters",
             "val_email_err": "A valid Email address is required",
-            "val_phone_err": "Contact Phone must be at least 6 digits",
+            "val_phone_err": "Phone number must start with +213 (e.g. +213555555555)",
 
             // Lockout Barrier
             "lock_title": "Workstation Activation Required",
@@ -180,7 +197,63 @@ Item {
             // Toasts & Feedback
             "copied_toast": "Copied to clipboard!",
             "deleted_toast": "Model folder deleted from disk",
-            "delete_err": "Could not delete folder"
+            "delete_err": "Could not delete folder",
+
+            // Backend / server success & error messages
+            "msg_trial_verified": "Trial status verified from server ({1}d {2}h remaining)",
+            "msg_trial_local": "Trial evaluated using local clock (server unreachable)",
+            "msg_activation_success": "Activation successful! Welcome, {1}.",
+            "msg_activation_error": "Activation error: {1}",
+            "msg_activation_failed": "Activation failed: {1}",
+            "msg_activation_rejected": "Activation rejected (HTTP {1})",
+            "msg_offline_active": "Offline mode active ({1} days left)",
+            "msg_license_alert": "License Alert: {1}",
+            "msg_registration_failed": "Registration failed: {1}",
+            "msg_registration_rejected": "Registration rejected (HTTP {1})",
+            "msg_status_check_failed": "Status check failed: {1}",
+            "msg_status_inquiry_failed": "Status inquiry failed (HTTP {1})",
+            "msg_status_label": "Status: {1}",
+            "msg_added_to_library": "\"{1}\" added to your library",
+            "msg_could_not_add_item": "Could not add item: {1}",
+            "msg_copied": "Copied to clipboard!",
+            "msg_folder_deleted": "Model folder deleted from disk",
+            "msg_could_not_delete": "Could not delete folder",
+            "msg_delete_error": "Delete error: {1}",
+            "msg_exported": "Successfully exported {1} model(s) to {2}",
+            "msg_export_failed": "Export failed: {1}",
+            "msg_backup_restored": "Backup restored! {1} item metadata records updated.",
+            "msg_imported": "Successfully imported {1} asset(s) into the library!",
+            "msg_no_valid_assets": "No valid 3D assets or files found to import.",
+            "msg_import_failed": "Import failed: {1}",
+            "msg_access_denied": "Access denied: Path is outside ./data",
+            "msg_folder_missing": "Folder does not exist: {1}",
+            "msg_library_load_failed": "Library load failed: {1}",
+            "msg_categories_load_failed": "Categories load failed: {1}",
+            "msg_needs_activation": "License requires initial activation",
+            "msg_license_corrupted": "License file corrupted or tampered. Activation required.",
+            "msg_trial_expired": "30-Day Free Trial has expired. Workstation license required.",
+            "msg_license_expired": "License expired. Online renewal required.",
+            "msg_offline_expired": "30-Day Offline Grace Period has expired. Please connect to internet to verify license.",
+            "msg_http_401": "Licensing server returned HTTP 401 (Unauthorized). Please contact support (+213775189229 / +213796629314).",
+            "msg_server_conn": "Server connection failed: {1}",
+            "msg_provide_query": "Provide an email address, phone number or device ID",
+            "msg_profile_registered": "Profile registered. Wait for an administrator to generate your license key.",
+            "msg_no_profile_found": "No customer profile or license found for this query",
+            "msg_name_too_short": "Full Name must be at least 2 characters",
+            "msg_email_required": "Valid email address is mandatory",
+            "msg_phone_digits": "Contact phone number must be at least 6 digits",
+            "msg_license_activated": "License activated successfully",
+            "msg_license_verified": "License verified successfully",
+            "msg_license_disabled": "License disabled or expired by administrator",
+            "msg_heartbeat_ok": "Heartbeat verified",
+            "msg_heartbeat_failed": "License validation failed on heartbeat",
+            "status_code_pending": "Pending License",
+            "status_code_active": "Active",
+            "status_code_expired": "Expired",
+            "status_code_unbound": "Unbound",
+            "status_code_not_found": "Not Found",
+            "status_code_ok": "OK",
+            "status_code_error": "Error"
         },
         "fr": {
             // App & Navigation
@@ -282,9 +355,28 @@ Item {
             "btn_copied": "Copié !",
 
             "activate_section_title": "Activer ou changer de licence",
-            "activate_section_desc": "Entrez votre clé officielle Bilnov Gallery pour supprimer les limites de l'essai.",
+            "activate_section_desc": "Pas encore de clé ? Envoyez vos coordonnées et nous vous livrons la clé d'activation par WhatsApp / téléphone. Vous avez déjà une clé ? Utilisez la section ci-dessous.",
+            "section_details_title": "Vos coordonnées",
+            "section_details_desc": "Obligatoires pour demander votre clé de licence — elle vous est envoyée par WhatsApp / téléphone.",
+            "section_have_key_title": "Vous avez déjà une clé ?",
+            "section_have_key_desc": "Saisissez votre clé d'activation pour activer ce poste.",
             "activate_btn": "Activer le poste de travail",
+            "btn_activate": "Activer",
             "btn_activating": "Activation auprès du serveur...",
+            "btn_requesting": "Envoi de vos coordonnées...",
+            "register_btn": "Demander une clé de licence",
+            "check_status_btn": "Vérifier le statut",
+            "seg_step1": "1 · Demander la clé",
+            "seg_step2": "2 · Activer",
+            "step1_title": "Étape 1 — Demandez votre clé de licence",
+            "step1_desc": "Envoyez vos coordonnées. Votre clé d'activation vous sera délivrée sur ce numéro par WhatsApp / téléphone.",
+            "step2_title": "Étape 2 — Activez votre poste de travail",
+            "step2_desc": "Saisissez la clé d'activation reçue par WhatsApp / téléphone.",
+            "submit_details_btn": "Envoyer mes coordonnées et demander la clé",
+            "whatsapp_delivery_note": "Votre clé d'activation vous sera envoyée sur ce numéro par WhatsApp.",
+            "link_have_key": "J'ai déjà ma clé →",
+            "link_need_key": "← Pas encore de clé ? En demander une",
+            "activate_flow_hint": "Pas encore de clé ? Envoyez vos coordonnées dans la fenêtre d'activation — la clé est envoyée par WhatsApp / téléphone.",
 
             "section_backup_title": "Gestion des données & Importation d'actifs",
             "section_backup_desc": "Exportez la sauvegarde de votre bibliothèque ou importez des modèles 3D et archives.",
@@ -300,7 +392,7 @@ Item {
             "app_developer_label": "Développé par",
             "app_developer_value": "Bilnov",
             "app_phone_label": "Téléphone / Contact",
-            "app_phone_value": "+213776139475",
+            "app_phone_value": "+213775189229",
 
             // Activation Dialog / Fields
             "activation_title": "Activation de Bilnov Gallery",
@@ -308,20 +400,18 @@ Item {
             "device_fingerprint": "EMPREINTE MATÉRIELLE (SHA-256)",
             "license_key_label": "Clé de licence *",
             "license_key_placeholder": "BILNOV-XXXX-XXXX-XXXX",
-            "customer_name_label": "Nom complet du client *",
+            "customer_name_label": "Nom complet du client",
             "customer_name_placeholder": "ex. Jean Dupont",
-            "email_label": "Adresse e-mail du client *",
+            "email_label": "Adresse e-mail du client",
             "email_placeholder": "nom@entreprise.com",
-            "phone_label": "Numéro de téléphone *",
-            "phone_placeholder": "+33 6 12 34 56 78",
+            "phone_label": "Numéro de téléphone",
+            "phone_placeholder": "+213 555 55 55 55",
             "address_label": "Adresse physique (Optionnelle)",
             "address_placeholder": "Ville, Pays",
-            "admin_key_label": "Clé API / Admin (Facultatif - authentification serveur)",
-            "admin_key_placeholder": "X-Admin-Key (facultatif)",
             "val_key_err": "Veuillez entrer une clé de licence valide (min 10 caractères)",
             "val_name_err": "Le nom complet doit comporter au moins 2 caractères",
             "val_email_err": "Une adresse e-mail valide est requise",
-            "val_phone_err": "Le téléphone doit comporter au moins 6 chiffres",
+            "val_phone_err": "Le numéro doit commencer par +213 (ex. +213555555555)",
 
             // Lockout Barrier
             "lock_title": "Activation du poste requise",
@@ -331,7 +421,63 @@ Item {
             // Toasts & Feedback
             "copied_toast": "Copié dans le presse-papiers !",
             "deleted_toast": "Dossier supprimé du disque",
-            "delete_err": "Impossible de supprimer le dossier"
+            "delete_err": "Impossible de supprimer le dossier",
+
+            // Backend / server success & error messages
+            "msg_trial_verified": "Statut d'essai vérifié depuis le serveur ({1}j {2}h restantes)",
+            "msg_trial_local": "Essai évalué avec l'horloge locale (serveur injoignable)",
+            "msg_activation_success": "Activation réussie ! Bienvenue, {1}.",
+            "msg_activation_error": "Erreur d'activation : {1}",
+            "msg_activation_failed": "Échec de l'activation : {1}",
+            "msg_activation_rejected": "Activation rejetée (HTTP {1})",
+            "msg_offline_active": "Mode hors-ligne actif ({1} jours restants)",
+            "msg_license_alert": "Alerte de licence : {1}",
+            "msg_registration_failed": "Échec de l'enregistrement : {1}",
+            "msg_registration_rejected": "Enregistrement rejeté (HTTP {1})",
+            "msg_status_check_failed": "Échec de la vérification du statut : {1}",
+            "msg_status_inquiry_failed": "Demande de statut échouée (HTTP {1})",
+            "msg_status_label": "Statut : {1}",
+            "msg_added_to_library": "« {1} » ajouté à votre bibliothèque",
+            "msg_could_not_add_item": "Impossible d'ajouter l'élément : {1}",
+            "msg_copied": "Copié dans le presse-papiers !",
+            "msg_folder_deleted": "Dossier du modèle supprimé du disque",
+            "msg_could_not_delete": "Impossible de supprimer le dossier",
+            "msg_delete_error": "Erreur de suppression : {1}",
+            "msg_exported": "{1} modèle(s) exporté(s) avec succès vers {2}",
+            "msg_export_failed": "Échec de l'export : {1}",
+            "msg_backup_restored": "Sauvegarde restaurée ! {1} fiches d'éléments mises à jour.",
+            "msg_imported": "{1} ressource(s) importée(s) avec succès dans la bibliothèque !",
+            "msg_no_valid_assets": "Aucun fichier ou ressource 3D valide à importer.",
+            "msg_import_failed": "Échec de l'import : {1}",
+            "msg_access_denied": "Accès refusé : le chemin est en dehors de ./data",
+            "msg_folder_missing": "Le dossier n'existe pas : {1}",
+            "msg_library_load_failed": "Échec du chargement de la bibliothèque : {1}",
+            "msg_categories_load_failed": "Échec du chargement des catégories : {1}",
+            "msg_needs_activation": "La licence nécessite une activation initiale",
+            "msg_license_corrupted": "Fichier de licence corrompu ou modifié. Activation requise.",
+            "msg_trial_expired": "L'essai gratuit de 30 jours a expiré. Licence de poste requise.",
+            "msg_license_expired": "Licence expirée. Renouvellement en ligne requis.",
+            "msg_offline_expired": "La période de grâce hors-ligne de 30 jours a expiré. Connectez-vous à Internet pour vérifier la licence.",
+            "msg_http_401": "Le serveur de licence a renvoyé HTTP 401 (Non autorisé). Contactez le support (+213775189229 / +213796629314).",
+            "msg_server_conn": "Échec de la connexion au serveur : {1}",
+            "msg_provide_query": "Fournissez une adresse e-mail, un numéro de téléphone ou un ID d'appareil",
+            "msg_profile_registered": "Profil enregistré. Attendez qu'un administrateur génère votre clé de licence.",
+            "msg_no_profile_found": "Aucun profil client ni licence trouvé pour cette requête",
+            "msg_name_too_short": "Le nom complet doit comporter au moins 2 caractères",
+            "msg_email_required": "Une adresse e-mail valide est obligatoire",
+            "msg_phone_digits": "Le numéro de téléphone doit comporter au moins 6 chiffres",
+            "msg_license_activated": "Licence activée avec succès",
+            "msg_license_verified": "Licence vérifiée avec succès",
+            "msg_license_disabled": "Licence désactivée ou expirée par l'administrateur",
+            "msg_heartbeat_ok": "Heartbeat vérifié",
+            "msg_heartbeat_failed": "Échec de la validation de la licence lors du heartbeat",
+            "status_code_pending": "Clé en attente",
+            "status_code_active": "Active",
+            "status_code_expired": "Expirée",
+            "status_code_unbound": "Non lié",
+            "status_code_not_found": "Introuvable",
+            "status_code_ok": "OK",
+            "status_code_error": "Erreur"
         }
     })
 
@@ -345,5 +491,94 @@ Item {
             return enDict[key];
         }
         return key;
+    }
+
+    // Maps exact English messages coming from the backend/server to i18n keys
+    readonly property var msgExact: ({
+        "Trial evaluated using local clock (server unreachable)": "msg_trial_local",
+        "Copied to clipboard!": "msg_copied",
+        "Model folder deleted from disk": "msg_folder_deleted",
+        "Could not delete folder": "msg_could_not_delete",
+        "No valid 3D assets or files found to import.": "msg_no_valid_assets",
+        "Access denied: Path is outside ./data": "msg_access_denied",
+        "License requires initial activation": "msg_needs_activation",
+        "License file corrupted or tampered. Activation required.": "msg_license_corrupted",
+        "30-Day Free Trial has expired. Workstation license required.": "msg_trial_expired",
+        "License expired. Online renewal required.": "msg_license_expired",
+        "30-Day Offline Grace Period has expired. Please connect to internet to verify license.": "msg_offline_expired",
+        "Licensing server returned HTTP 401 (Unauthorized). Please contact support (+213775189229 / +213796629314).": "msg_http_401",
+        "Provide an email address, phone number or device ID": "msg_provide_query",
+        "No customer profile or license found for this query": "msg_no_profile_found",
+        "Profile registered. Wait for an administrator to generate your license key.": "msg_profile_registered",
+        "Profile registered. Waiting for an administrator to generate the license key.": "msg_profile_registered",
+        "Full Name must be at least 2 characters": "msg_name_too_short",
+        "Valid email address is mandatory": "msg_email_required",
+        "Contact phone number must be at least 6 digits": "msg_phone_digits",
+        "License activated successfully": "msg_license_activated",
+        "License successfully activated!": "msg_license_activated",
+        "License verified successfully": "msg_license_verified",
+        "License disabled or expired by administrator": "msg_license_disabled",
+        "Heartbeat verified": "msg_heartbeat_ok",
+        "License validation failed on heartbeat": "msg_heartbeat_failed",
+        "PENDING_LICENSE": "status_code_pending",
+        "ACTIVE": "status_code_active",
+        "EXPIRED": "status_code_expired",
+        "UNBOUND": "status_code_unbound",
+        "NOT_FOUND": "status_code_not_found",
+        "OK": "status_code_ok",
+        "ERROR": "status_code_error",
+        "TRIAL": "status_trial",
+        "NEEDS_ACTIVATION": "status_activation_required",
+        "TRIAL_EXPIRED": "status_trial_expired",
+        "OFFLINE_EXPIRED": "status_offline"
+    })
+
+    // Matches parameterised English messages; {1}, {2}... are filled from the
+    // captured groups. Groups listed in "rec" are translated recursively.
+    readonly property var msgRules: ([
+        { re: /^Trial status verified from server \((\d+)d (\d+)h remaining\)$/, k: "msg_trial_verified", rec: [] },
+        { re: /^Activation successful! Welcome,\s*(.+?)\.?$/, k: "msg_activation_success", rec: [] },
+        { re: /^Activation error:\s*(.*)$/, k: "msg_activation_error", rec: [1] },
+        { re: /^Activation failed:\s*(.*)$/, k: "msg_activation_failed", rec: [1] },
+        { re: /^Offline mode active \((\d+) days left\)$/, k: "msg_offline_active", rec: [] },
+        { re: /^License Alert:\s*(.*)$/, k: "msg_license_alert", rec: [1] },
+        { re: /^Registration failed:\s*(.*)$/, k: "msg_registration_failed", rec: [1] },
+        { re: /^Status check failed:\s*(.*)$/, k: "msg_status_check_failed", rec: [1] },
+        { re: /^"(.+)" added to your library$/, k: "msg_added_to_library", rec: [] },
+        { re: /^Could not add item:\s*(.*)$/, k: "msg_could_not_add_item", rec: [1] },
+        { re: /^Delete error:\s*(.*)$/, k: "msg_delete_error", rec: [1] },
+        { re: /^Successfully exported (\d+) models? to (.+)$/, k: "msg_exported", rec: [] },
+        { re: /^Export failed:\s*(.*)$/, k: "msg_export_failed", rec: [1] },
+        { re: /^Backup restored! (\d+) item metadata records updated\.$/, k: "msg_backup_restored", rec: [] },
+        { re: /^Successfully imported (\d+) asset\(s\) into the library!$/, k: "msg_imported", rec: [] },
+        { re: /^Import failed:\s*(.*)$/, k: "msg_import_failed", rec: [1] },
+        { re: /^Folder does not exist:\s*(.*)$/, k: "msg_folder_missing", rec: [] },
+        { re: /^Library load failed:\s*(.*)$/, k: "msg_library_load_failed", rec: [1] },
+        { re: /^Categories load failed:\s*(.*)$/, k: "msg_categories_load_failed", rec: [1] },
+        { re: /^Server connection failed:\s*(.*)$/, k: "msg_server_conn", rec: [1] },
+        { re: /^Activation rejected \(HTTP (\d+)\)$/, k: "msg_activation_rejected", rec: [] },
+        { re: /^Status inquiry failed \(HTTP (\d+)\)$/, k: "msg_status_inquiry_failed", rec: [] },
+        { re: /^Registration rejected \(HTTP (\d+)\)$/, k: "msg_registration_rejected", rec: [] },
+        { re: /^Status: (.+)$/, k: "msg_status_label", rec: [1] }
+    ])
+
+    function tMsg(text) {
+        if (text === undefined || text === null || text === "") return "";
+        var s = String(text);
+        var exact = msgExact[s];
+        if (exact !== undefined) return t(exact);
+        for (var i = 0; i < msgRules.length; i++) {
+            var rule = msgRules[i];
+            var m = s.match(rule.re);
+            if (!m) continue;
+            var out = t(rule.k);
+            for (var g = 1; g < m.length; g++) {
+                var v = (m[g] === undefined) ? "" : m[g];
+                if (rule.rec && rule.rec.indexOf(g) !== -1) v = tMsg(v);
+                out = out.replace("{" + g + "}", v);
+            }
+            return out;
+        }
+        return s;
     }
 }

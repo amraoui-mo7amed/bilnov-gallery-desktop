@@ -31,39 +31,47 @@ class MockLicenseServerHandler(http.server.BaseHTTPRequestHandler):
 
     revoked = False
     expired = False
+    profiles = {}  # email -> registered client profile (POST /api/v1/client/profile)
 
     def log_message(self, format, *args):
         # Silence HTTP server logs during tests
         return
 
+    def _send_json(self, status, payload):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
+
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(content_len).decode("utf-8")) if content_len > 0 else {}
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         if self.path == "/api/v1/license/activate":
-            cust = body.get("customer", {})
+            cust = body.get("customer") or {}
             key = body.get("license_key", "")
             dev_id = body.get("device_id", "")
 
-            # Validate openapi schema constraints
-            if len(key) < 10 or len(cust.get("name", "")) < 2 or "@" not in cust.get("email", ""):
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({
+            # Validate openapi schema constraints (customer is optional)
+            bad_key = len(key) < 10
+            bad_cust = bool(cust) and (
+                len(cust.get("name", "")) < 2
+                or len(cust.get("email", "")) < 5
+                or "@" not in cust.get("email", "")
+                or len(cust.get("phone", "")) < 6
+            )
+            if bad_key or bad_cust:
+                self._send_json(400, {
                     "success": False,
                     "status_code": "INVALID_PAYLOAD",
                     "message": "Validation failed",
-                    "server_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                }).encode("utf-8"))
+                    "server_time": now_iso,
+                })
                 return
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             exp_iso = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
-            self.wfile.write(json.dumps({
+            self._send_json(200, {
                 "success": True,
                 "status_code": "ACTIVE",
                 "message": "License bound and activated successfully",
@@ -73,30 +81,59 @@ class MockLicenseServerHandler(http.server.BaseHTTPRequestHandler):
                 "server_time": now_iso,
                 "customer_name": cust.get("name"),
                 "signature": "mock-hmac-sha256-signature-xyz",
-            }).encode("utf-8"))
+            })
+
+        elif self.path == "/api/v1/client/profile":
+            name = body.get("name", "")
+            email = body.get("email", "")
+            phone = body.get("phone", "")
+
+            if len(name) < 2 or len(email) < 5 or "@" not in email or len(phone) < 6:
+                self._send_json(400, {
+                    "success": False,
+                    "status_code": "INVALID_PAYLOAD",
+                    "message": "Validation failed",
+                    "customer_id": None,
+                    "name": None,
+                    "email": None,
+                    "phone": None,
+                    "server_time": now_iso,
+                })
+                return
+
+            self.__class__.profiles[email.lower()] = {
+                "customer_id": len(self.__class__.profiles) + 1,
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "device_id": body.get("device_id"),
+            }
+            self._send_json(201, {
+                "success": True,
+                "status_code": "CREATED",
+                "message": "Profile created. Wait for an administrator to generate your license key.",
+                "customer_id": self.__class__.profiles[email.lower()]["customer_id"],
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "server_time": now_iso,
+            })
 
         elif self.path == "/api/v1/license/verify":
             key = body.get("license_key", "")
             dev_id = body.get("device_id", "")
 
             if self.__class__.revoked:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({
+                self._send_json(400, {
                     "success": False,
                     "status_code": "REVOKED",
                     "message": "License has been revoked by platform administrator",
-                    "server_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                }).encode("utf-8"))
+                    "server_time": now_iso,
+                })
                 return
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             exp_iso = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
-            self.wfile.write(json.dumps({
+            self._send_json(200, {
                 "success": True,
                 "status_code": "ACTIVE",
                 "message": "License verified",
@@ -105,16 +142,12 @@ class MockLicenseServerHandler(http.server.BaseHTTPRequestHandler):
                 "expires_at": exp_iso,
                 "server_time": now_iso,
                 "signature": "mock-hmac-sha256-signature-xyz",
-            }).encode("utf-8"))
+            })
 
         elif self.path == "/api/v1/license/heartbeat":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             is_active = not self.__class__.revoked
             is_exp = self.__class__.expired
-            self.wfile.write(json.dumps({
+            self._send_json(200, {
                 "success": is_active and not is_exp,
                 "status_code": "ACTIVE" if (is_active and not is_exp) else "INACTIVE",
                 "is_active": is_active,
@@ -122,25 +155,72 @@ class MockLicenseServerHandler(http.server.BaseHTTPRequestHandler):
                 "expires_at": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat(),
                 "server_time": now_iso,
                 "signature": "mock-hmac-sha256-signature-xyz",
-            }).encode("utf-8"))
+            })
         else:
             self.send_response(404)
             self.end_headers()
 
     def do_GET(self):
-        if self.path.startswith("/api/v1/license/status/"):
-            key = self.path.split("/")[-1]
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/api/v1/client/status":
+            query = (parse_qs(parsed.query).get("query") or [""])[0].strip().lower()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            match = None
+            for profile in self.__class__.profiles.values():
+                if query and query in (
+                    str(profile.get("email", "")).lower(),
+                    str(profile.get("phone", "")).lower(),
+                    str(profile.get("device_id", "")).lower(),
+                ):
+                    match = profile
+                    break
+
+            if not match:
+                self._send_json(404, {
+                    "success": False,
+                    "status_code": "NOT_FOUND",
+                    "message": "No customer profile or license found for this query",
+                    "license_key": None,
+                    "device_id": None,
+                    "is_active": False,
+                    "is_expired": False,
+                    "expires_at": None,
+                    "contact_admin": "+213775189229",
+                    "server_time": now_iso,
+                })
+                return
+
+            self._send_json(200, {
+                "success": True,
+                "status_code": "PENDING_LICENSE",
+                "message": "Profile registered. Waiting for an administrator to generate the license key.",
+                "customer_name": match.get("name"),
+                "customer_phone": match.get("phone"),
+                "customer_email": match.get("email"),
+                "license_key": None,
+                "device_id": match.get("device_id"),
+                "is_active": False,
+                "is_expired": False,
+                "expires_at": None,
+                "contact_admin": "+213775189229",
+                "server_time": now_iso,
+            })
+            return
+
+        if parsed.path.startswith("/api/v1/license/status/"):
+            key = parsed.path.split("/")[-1]
+            self._send_json(200, {
                 "license_key": key,
                 "is_active": not self.__class__.revoked,
                 "is_expired": self.__class__.expired,
                 "is_bound": True,
                 "expires_at": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat(),
                 "status_display": "Active" if not self.__class__.revoked else "Revoked",
-            }).encode("utf-8"))
+            })
         else:
             self.send_response(404)
             self.end_headers()
@@ -164,6 +244,7 @@ class TestBilnovGallery(unittest.TestCase):
     def setUp(self):
         MockLicenseServerHandler.revoked = False
         MockLicenseServerHandler.expired = False
+        MockLicenseServerHandler.profiles = {}
         self.tmp_dir = Path(tempfile.mkdtemp(prefix="bilnov_test_"))
         self.license_file = self.tmp_dir / ".zed_license.json"
         self.server_url = f"http://127.0.0.1:{self.port}"
@@ -249,7 +330,62 @@ class TestBilnovGallery(unittest.TestCase):
         self.assertEqual(lic2.current_state.status_code, "ACTIVE")
 
     # -------------------------------------------------------------
-    # 4. 7-Day Offline Grace Period
+    # 3b. Optional Customer Details (ActivateLicenseIn.customer)
+    # -------------------------------------------------------------
+
+    def test_activation_without_customer_details(self):
+        """customer is optional in the new spec: license key + device_id alone activate."""
+        ok, msg = self.lic.activate_license("ZED-NO-CUST-1234")
+        self.assertTrue(ok, msg)
+        self.assertTrue(self.lic.current_state.is_valid)
+        self.assertEqual(self.lic.current_state.status_code, "ACTIVE")
+        self.assertEqual(self.lic.current_state.license_key, "ZED-NO-CUST-1234")
+
+        with open(self.license_file, "r") as f:
+            data = json.load(f)
+        self.assertEqual(data.get("customer_name") or "", "")
+
+    # -------------------------------------------------------------
+    # 3c. Client Registration & Inquiry (/api/v1/client/*)
+    # -------------------------------------------------------------
+
+    def test_client_registration_and_status(self):
+        # Register profile (POST /api/v1/client/profile)
+        ok, msg = self.lic.register_client_profile(
+            "Jane Doe",
+            "jane@example.com",
+            "+15559990000",
+            "12 Rue Exemple",
+        )
+        self.assertTrue(ok, msg)
+        self.assertIn("administrator", msg)
+
+        # Registration validates schema constraints
+        ok_bad, msg_bad = self.lic.register_client_profile("J", "jane@example.com", "+15559990000")
+        self.assertFalse(ok_bad)
+
+        # Status inquiry by email -> PENDING_LICENSE (GET /api/v1/client/status)
+        ok_s, msg_s, payload = self.lic.query_client_status("jane@example.com")
+        self.assertTrue(ok_s, msg_s)
+        self.assertEqual(payload.get("status_code"), "PENDING_LICENSE")
+        self.assertIsNone(payload.get("license_key"))
+
+        # Status inquiry by phone
+        ok_p, _, payload_p = self.lic.query_client_status("+15559990000")
+        self.assertTrue(ok_p)
+        self.assertEqual(payload_p.get("customer_name"), "Jane Doe")
+
+        # Unknown query -> not found
+        ok_n, msg_n, _ = self.lic.query_client_status("nobody@example.com")
+        self.assertFalse(ok_n)
+
+        # Empty query rejected client-side
+        ok_e, _, payload_e = self.lic.query_client_status("   ")
+        self.assertFalse(ok_e)
+        self.assertEqual(payload_e, {})
+
+    # -------------------------------------------------------------
+    # 4. 30-Day Offline Grace Period
     # -------------------------------------------------------------
 
     def test_offline_grace_period(self):
@@ -259,21 +395,21 @@ class TestBilnovGallery(unittest.TestCase):
         # Simulate unreachable server
         offline_lic = LicenseManager(server_url="http://127.0.0.1:9999", license_file=self.license_file)
         ok, msg = offline_lic.verify_license()
-        self.assertTrue(ok, "Within 7 days offline grace, verification must succeed")
+        self.assertTrue(ok, "Within 30 days offline grace, verification must succeed")
         self.assertEqual(offline_lic.current_state.status_code, "ACTIVE_OFFLINE")
-        self.assertGreaterEqual(offline_lic.current_state.offline_days_remaining, 6)
+        self.assertGreaterEqual(offline_lic.current_state.offline_days_remaining, 29)
 
-        # Simulate expired offline grace (> 7 days)
+        # Simulate expired offline grace (> 30 days)
         with open(self.license_file, "r") as f:
             data = json.load(f)
-        past_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)).isoformat()
+        past_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=31)).isoformat()
         data["last_verified_at"] = past_time
         data["checksum"] = compute_license_checksum(data)
         with open(self.license_file, "w") as f:
             json.dump(data, f)
 
         ok_expired, msg_expired = offline_lic.verify_license()
-        self.assertFalse(ok_expired, "After 7 days offline, verification must fail")
+        self.assertFalse(ok_expired, "After 30 days offline, verification must fail")
         self.assertEqual(offline_lic.current_state.status_code, "OFFLINE_EXPIRED")
 
     # -------------------------------------------------------------

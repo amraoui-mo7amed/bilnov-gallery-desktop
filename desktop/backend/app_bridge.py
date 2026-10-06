@@ -5,6 +5,7 @@ and the licensing lifecycle engine (implementing openapi.json).
 All scraper mechanisms, write/copy functions, and settings have been completely removed.
 """
 
+import logging
 import os
 import subprocess
 import sys
@@ -27,6 +28,8 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from config import DATA_DIR, HEARTBEAT_INTERVAL_SECONDS
 from .library import library_manager
 from .licensing import license_manager
+
+logger = logging.getLogger("app_bridge")
 
 
 class Worker(QRunnable):
@@ -61,6 +64,10 @@ class AppBridge(QObject):
     # Reactive state change signals
     licenseChanged = Signal()
     activationResult = Signal(bool, str)
+
+    # Client Registration & Inquiry (openapi.json)
+    clientProfileResult = Signal(bool, str)  # (success, message)
+    clientStatusResult = Signal(bool, str, str, str)  # (success, status_code, message, license_key)
 
     languageChanged = Signal()
 
@@ -143,16 +150,6 @@ class AppBridge(QObject):
         return self.lic.current_state.customer_phone or ""
 
     @Property(str, notify=licenseChanged)
-    def adminKey(self) -> str:
-        return getattr(self.lic, "admin_key", "")
-
-    @Slot(str)
-    def setAdminKey(self, key: str):
-        self.lic.set_admin_key(key)
-        self.licenseChanged.emit()
-        self.toast.emit("success", "API / Admin Key updated")
-
-    @Property(str, notify=licenseChanged)
     def licenseExpiresAt(self) -> str:
         return self.lic.current_state.expires_at or "Perpetual"
 
@@ -210,7 +207,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v1.3.0"
+        return "v1.4.0"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
@@ -276,6 +273,7 @@ class AppBridge(QObject):
                 self.toast.emit("success", f"Activation successful! Welcome, {name}.")
                 self.loadLibrary()
                 self.loadCategories()
+                QTimer.singleShot(1500, self._restart_application)
             else:
                 self.toast.emit("error", f"Activation error: {msg}")
 
@@ -286,6 +284,25 @@ class AppBridge(QObject):
             self.toast.emit("error", f"Activation failed: {err_msg}")
 
         self.thread_pool.start(Worker(_task, on_success=_on_success, on_error=_on_error))
+
+    def _restart_application(self) -> None:
+        """Restarts the application process (used after a successful activation)."""
+        from PySide6.QtCore import QCoreApplication, QProcess
+
+        if getattr(sys, "frozen", False):
+            program = sys.executable
+            arguments = sys.argv[1:]
+            workdir = os.path.dirname(sys.executable) or os.getcwd()
+        else:
+            program = sys.executable
+            main_script = str(Path(__file__).resolve().parents[2] / "main.py")
+            arguments = [main_script] + sys.argv[1:]
+            workdir = str(Path(main_script).parent)
+
+        if QProcess.startDetached(program, arguments, workdir):
+            QCoreApplication.quit()
+        else:
+            logger.error("Restart failed: could not start a new application process")
 
     @Slot()
     def verifyLicense(self):
@@ -322,6 +339,48 @@ class AppBridge(QObject):
                 self.toast.emit("error", f"License Alert: {msg}")
 
         self.thread_pool.start(Worker(_task, on_success=_on_success))
+
+    @Slot(str, str, str, str)
+    def registerClientProfile(self, name: str, email: str, phone: str, address: str = ""):
+        """Client profile creation POST /api/v1/client/profile (waits for admin license key)."""
+        def _task():
+            return self.lic.register_client_profile(name, email, phone, address)
+
+        def _on_success(res):
+            success, msg = res
+            self.clientProfileResult.emit(success, msg)
+            if success:
+                self.toast.emit("success", msg)
+            else:
+                self.toast.emit("error", msg)
+
+        def _on_error(exc):
+            self.clientProfileResult.emit(False, str(exc))
+            self.toast.emit("error", f"Registration failed: {exc}")
+
+        self.thread_pool.start(Worker(_task, on_success=_on_success, on_error=_on_error))
+
+    @Slot(str)
+    def checkClientStatus(self, query: str):
+        """Client license/profile status lookup GET /api/v1/client/status?query=..."""
+        def _task():
+            return self.lic.query_client_status(query)
+
+        def _on_success(res):
+            success, msg, data = res
+            status_code = str(data.get("status_code") or ("OK" if success else "ERROR"))
+            license_key = str(data.get("license_key") or "")
+            self.clientStatusResult.emit(success, status_code, msg, license_key)
+            if success:
+                self.toast.emit("info", msg)
+            else:
+                self.toast.emit("error", msg)
+
+        def _on_error(exc):
+            self.clientStatusResult.emit(False, "ERROR", str(exc), "")
+            self.toast.emit("error", f"Status check failed: {exc}")
+
+        self.thread_pool.start(Worker(_task, on_success=_on_success, on_error=_on_error))
 
     # =============================================================
     # Library Slots (Reading ./data)
@@ -450,13 +509,13 @@ class AppBridge(QObject):
 
     @Slot(result="QVariantList")
     def pickModelFiles(self) -> list:
-        """Opens a multi-select picker for SketchUp (and other 3D) files."""
+        """Opens a multi-select picker with no file-type restriction on model uploads."""
         from PySide6.QtWidgets import QFileDialog
         files, _ = QFileDialog.getOpenFileNames(
             None,
-            "Select SketchUp Files",
+            "Select Model Files",
             "",
-            "SketchUp Files (*.skp);;3D Models (*.skp *.obj *.fbx *.blend *.glb *.gltf *.stl *.3ds *.max *.c4d);;Archives (*.zip *.rar *.7z);;All Files (*)",
+            "All Files (*)",
         )
         return [f for f in files if f]
 
@@ -605,9 +664,9 @@ class AppBridge(QObject):
         if not raw_path:
             files, _ = QFileDialog.getOpenFileNames(
                 None,
-                "Import 3D Assets or Backups into Bilnov Gallery",
+                "Import Assets or Backups into Bilnov Gallery",
                 "",
-                "Supported Files (*.skp *.obj *.fbx *.blend *.glb *.gltf *.stl *.3ds *.max *.c4d *.zip *.rar *.7z *.json);;3D Models (*.skp *.obj *.fbx *.blend *.glb *.gltf *.stl *.3ds *.max *.c4d);;Archives (*.zip *.rar *.7z);;JSON Backups (*.json);;All Files (*.*)",
+                "All Files (*)",
             )
             selected_files = [Path(f) for f in files if f.strip()]
         else:
@@ -662,7 +721,6 @@ class AppBridge(QObject):
         imported_dir.mkdir(parents=True, exist_ok=True)
 
         imported_count = 0
-        MODEL_EXTS = {".skp", ".obj", ".fbx", ".blend", ".zip", ".rar", ".7z", ".3ds", ".max", ".c4d", ".glb", ".gltf", ".stl"}
         IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
         try:
@@ -715,8 +773,8 @@ class AppBridge(QObject):
                             json.dump(meta, mf, indent=2, ensure_ascii=False)
                     imported_count += 1
 
-                elif item_path.suffix.lower() in MODEL_EXTS:
-                    # Single 3D model file import
+                elif item_path.suffix.lower() not in IMAGE_EXTS:
+                    # Any other file type is imported as a model file (no file-type restriction)
                     item_stem = item_path.stem
                     clean_title = item_stem.replace("_", " ").replace("-", " ").title()
                     target_folder = imported_dir / item_stem

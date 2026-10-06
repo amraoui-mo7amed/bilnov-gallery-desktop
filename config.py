@@ -45,8 +45,8 @@ IMAGE_CACHE_DIR = USER_CACHE_DIR / "images"
 IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Licensing API Configuration (from openapi.json)
+# All license endpoints are public machine-to-machine APIs: no admin credentials required.
 LICENSE_SERVER_URL = config("LICENSE_SERVER_URL", default="https://bilnov-gallery.bilnov.com").rstrip("/")
-ADMIN_KEY = config("ADMIN_KEY", default="")
-OFFLINE_GRACE_DAYS = 7
+OFFLINE_GRACE_DAYS = 30
 HEARTBEAT_INTERVAL_SECONDS = 4 * 3600  # 4 hours
 LICENSE_FILE_PATH = Path.home() / ".zed_license.json"
