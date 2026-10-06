@@ -109,13 +109,16 @@ Rectangle {
 
         // Open ./data Storage Directory
         Rectangle {
-            width: 130
+            Layout.minimumWidth: storageRow.implicitWidth + 32
+            Layout.preferredWidth: storageRow.implicitWidth + 32
+            Layout.maximumWidth: 210
             height: 36
             radius: Theme.radiusMd
             color: storageMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : Theme.surfaceElevated
             border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3)
 
             RowLayout {
+                id: storageRow
                 anchors.centerIn: parent
                 spacing: 6
                 FaIcon {

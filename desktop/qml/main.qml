@@ -171,12 +171,15 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
-                width: 220
+                Layout.minimumWidth: lockBtnRow.implicitWidth + 32
+                Layout.preferredWidth: lockBtnRow.implicitWidth + 32
+                Layout.maximumWidth: 210
                 height: 40
                 radius: 8
                 color: activateBtnMouse.containsMouse ? Theme.primaryHover : Theme.primary
 
                 RowLayout {
+                    id: lockBtnRow
                     anchors.centerIn: parent
                     spacing: 8
                     FaIcon {

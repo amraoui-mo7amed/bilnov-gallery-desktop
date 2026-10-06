@@ -103,7 +103,9 @@ Flickable {
 
                     // English Button
                     Rectangle {
-                        width: 160
+                        Layout.minimumWidth: langEnRow.implicitWidth + 32
+                        Layout.preferredWidth: langEnRow.implicitWidth + 32
+                        Layout.maximumWidth: 210
                         height: 42
                         radius: Theme.radiusMd
                         color: I18n.currentLanguage === "en" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surfaceElevated
@@ -111,6 +113,7 @@ Flickable {
                         border.width: 1
 
                         RowLayout {
+                            id: langEnRow
                             anchors.centerIn: parent
                             spacing: 8
                             FaIcon {
@@ -137,7 +140,9 @@ Flickable {
 
                     // Français Button
                     Rectangle {
-                        width: 160
+                        Layout.minimumWidth: langFrRow.implicitWidth + 32
+                        Layout.preferredWidth: langFrRow.implicitWidth + 32
+                        Layout.maximumWidth: 210
                         height: 42
                         radius: Theme.radiusMd
                         color: I18n.currentLanguage === "fr" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surfaceElevated
@@ -145,6 +150,7 @@ Flickable {
                         border.width: 1
 
                         RowLayout {
+                            id: langFrRow
                             anchors.centerIn: parent
                             spacing: 8
                             FaIcon {
@@ -216,12 +222,15 @@ Flickable {
                     // Refresh Network Time Button
                     Rectangle {
                         height: 32
-                        width: 170
+                        Layout.minimumWidth: refreshRow.implicitWidth + 32
+                        Layout.preferredWidth: refreshRow.implicitWidth + 32
+                        Layout.maximumWidth: 210
                         radius: Theme.radiusMd
                         color: refreshMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surfaceElevated
                         border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
 
                         RowLayout {
+                            id: refreshRow
                             anchors.centerIn: parent
                             spacing: 6
                             FaIcon {
@@ -412,11 +421,14 @@ Flickable {
                                 }
                             }
                             Rectangle {
-                                width: 70
+                                Layout.minimumWidth: copyDevLbl.implicitWidth + 28
+                                Layout.preferredWidth: copyDevLbl.implicitWidth + 28
+                                Layout.maximumWidth: 210
                                 height: 34
                                 radius: 6
                                 color: copyDevMouse.containsMouse ? Theme.primaryHover : Theme.primary
                                 Text {
+                                    id: copyDevLbl
                                     anchors.centerIn: parent
                                     text: I18n.t("btn_copy")
                                     color: "white"
@@ -775,7 +787,9 @@ Flickable {
                         spacing: 8
 
                         Rectangle {
-                            width: registerBtnRow.implicitWidth + 28
+                            Layout.minimumWidth: registerBtnRow.implicitWidth + 32
+                            Layout.preferredWidth: registerBtnRow.implicitWidth + 32
+                            Layout.maximumWidth: 210
                             height: 40
                             radius: 8
                             color: registerMouse.containsMouse ? Theme.primaryHover : Theme.primary
@@ -828,7 +842,9 @@ Flickable {
                         }
 
                         Rectangle {
-                            width: statusBtnRow.implicitWidth + 28
+                            Layout.minimumWidth: statusBtnRow.implicitWidth + 32
+                            Layout.preferredWidth: statusBtnRow.implicitWidth + 32
+                            Layout.maximumWidth: 210
                             height: 40
                             radius: 8
                             color: statusMouse.containsMouse ? Theme.surfaceElevated : Theme.surface
@@ -941,12 +957,15 @@ Flickable {
                                 spacing: 8
 
                                 Rectangle {
-                                    width: 180
+                                    Layout.minimumWidth: activateBtnRow.implicitWidth + 32
+                                    Layout.preferredWidth: activateBtnRow.implicitWidth + 32
+                                    Layout.maximumWidth: 210
                                     height: 40
                                     radius: 8
                                     color: activateMouse.containsMouse ? Theme.primaryHover : Theme.primary
 
                                     RowLayout {
+                                        id: activateBtnRow
                                         anchors.centerIn: parent
                                         spacing: 8
                                         FaIcon {

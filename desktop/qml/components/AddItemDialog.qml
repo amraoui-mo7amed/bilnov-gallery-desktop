@@ -403,20 +403,27 @@ Rectangle {
                     Item { Layout.fillWidth: true }
 
                     Rectangle {
-                        width: 110; height: 38
+                        Layout.minimumWidth: cancelLbl.implicitWidth + 32
+                        Layout.preferredWidth: cancelLbl.implicitWidth + 32
+                        Layout.maximumWidth: 210
+                        height: 38
                         radius: Theme.radiusMd
                         color: cancelMouse.containsMouse ? Theme.surfaceElevated : "transparent"
                         border.color: Theme.border
-                        Text { anchors.centerIn: parent; text: I18n.t("cancel"); color: Theme.textPrimary; font.pixelSize: 12; font.bold: true }
+                        Text { id: cancelLbl; anchors.centerIn: parent; text: I18n.t("cancel"); color: Theme.textPrimary; font.pixelSize: 12; font.bold: true }
                         MouseArea { id: cancelMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
                     }
 
                     Rectangle {
-                        width: 160; height: 38
+                        Layout.minimumWidth: saveRow.implicitWidth + 32
+                        Layout.preferredWidth: saveRow.implicitWidth + 32
+                        Layout.maximumWidth: 210
+                        height: 38
                         radius: Theme.radiusMd
                         opacity: root.isSubmitting ? 0.6 : 1
                         color: saveMouse.containsMouse ? Theme.primaryHover : Theme.primary
                         RowLayout {
+                            id: saveRow
                             anchors.centerIn: parent
                             spacing: 8
                             FaIcon { icon: root.isSubmitting ? Icons.sync : Icons.check; size: 12; iconColor: "white" }

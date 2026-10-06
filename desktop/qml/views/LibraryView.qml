@@ -194,7 +194,9 @@ Item {
 
             // Add Item Button
             Rectangle {
-                width: addItemRow.implicitWidth + 28
+                Layout.minimumWidth: addItemRow.implicitWidth + 32
+                Layout.preferredWidth: addItemRow.implicitWidth + 32
+                Layout.maximumWidth: 210
                 height: 40
                 radius: Theme.radiusMd
                 color: addItemMouse.containsMouse ? Theme.primaryHover : Theme.primary
@@ -372,12 +374,15 @@ Item {
 
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
-                    width: 170
+                    Layout.minimumWidth: emptyOpenRow.implicitWidth + 32
+                    Layout.preferredWidth: emptyOpenRow.implicitWidth + 32
+                    Layout.maximumWidth: 210
                     height: 38
                     radius: Theme.radiusSm
                     color: emptyOpenMouse.containsMouse ? Theme.primaryHover : Theme.primary
 
                     RowLayout {
+                        id: emptyOpenRow
                         anchors.centerIn: parent
                         spacing: 8
                         layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight

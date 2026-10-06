@@ -338,7 +338,7 @@ class LibraryManager:
         if not imgs:
             raise ValueError("At least one image is required")
         if not models:
-            raise ValueError("At least one SketchUp / model file is required")
+            raise ValueError("At least one model file is required")
 
         def _safe(name: str) -> str:
             s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name).strip().strip(".")
