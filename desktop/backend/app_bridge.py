@@ -5,6 +5,7 @@ and the licensing lifecycle engine (implementing openapi.json).
 All scraper mechanisms, write/copy functions, and settings have been completely removed.
 """
 
+import datetime
 import logging
 import os
 import subprocess
@@ -156,6 +157,37 @@ class AppBridge(QObject):
     @Property(str, notify=licenseChanged)
     def licenseExpiresAt(self) -> str:
         return self.lic.current_state.expires_at or "Perpetual"
+
+    @staticmethod
+    def _parse_expiry(value: str):
+        """Parses expires_at strings (ISO, 'YYYY-MM-DD HH:MM UTC', ...)."""
+        if not value:
+            return None
+        raw = str(value).strip().replace("Z", "+00:00")
+        for fmt in (None, "%Y-%m-%d %H:%M UTC", "%Y-%m-%d %H:%M:%S"):
+            try:
+                dt = datetime.datetime.fromisoformat(raw) if fmt is None else datetime.datetime.strptime(raw, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                return dt
+            except Exception:
+                continue
+        return None
+
+    @Property(str, notify=licenseChanged)
+    def licenseCountdownText(self) -> str:
+        """Days/hours until the license expires, or 'Perpetual' when timeless."""
+        expiry = self._parse_expiry(self.lic.current_state.expires_at)
+        if expiry is None:
+            return "Perpetual"
+        remaining = max(0.0, (expiry - datetime.datetime.now(datetime.timezone.utc)).total_seconds())
+        days = int(remaining // 86400)
+        hours = int((remaining % 86400) // 3600)
+        return f"{days}d {hours:02d}h"
+
+    @Property(bool, notify=licenseChanged)
+    def licenseIsPerpetual(self) -> bool:
+        return self._parse_expiry(self.lic.current_state.expires_at) is None
 
     @Property(int, notify=licenseChanged)
     def trialDaysRemaining(self) -> int:

@@ -118,6 +118,28 @@ def compute_license_checksum(data: Dict[str, Any]) -> str:
     return hmac.new(_LOCAL_INTEGRITY_SALT.encode("utf-8"), raw, hashlib.sha256).hexdigest()
 
 
+_STATUS_CODE_ALIASES = {
+    "OK": "ACTIVE",
+    "VALID": "ACTIVE",
+    "VERIFIED": "ACTIVE",
+    "SUCCESS": "ACTIVE",
+    "LICENSED": "ACTIVE",
+    "ACTIVE_VERIFIED": "ACTIVE",
+    "TRIAL_ACTIVE": "TRIAL",
+    "OFFLINE": "ACTIVE_OFFLINE",
+    "GRACE": "ACTIVE_OFFLINE",
+    "OFFLINE_GRACE": "ACTIVE_OFFLINE",
+    "NEEDS_ACTIVATE": "NEEDS_ACTIVATION",
+    "PENDING_ACTIVATION": "NEEDS_ACTIVATION",
+}
+
+
+def normalize_status_code(raw: Any, default: str = "ACTIVE") -> str:
+    """Normalizes server-provided status codes to the canonical client values."""
+    code = str(raw or default).strip().upper().replace(" ", "_").replace("-", "_")
+    return _STATUS_CODE_ALIASES.get(code, code)
+
+
 @dataclass
 class LicenseState:
     is_valid: bool = False
@@ -459,9 +481,11 @@ class LicenseManager:
             }
             self.save_local_license(local_record)
 
+            server_code = data.get("status_code", "ACTIVE")
+            logger.info("Activate response status_code=%r -> %r", server_code, normalize_status_code(server_code))
             self.current_state = LicenseState(
                 is_valid=True,
-                status_code=data.get("status_code", "ACTIVE"),
+                status_code=normalize_status_code(server_code),
                 message=data.get("message", "License activated successfully"),
                 license_key=key,
                 device_id=self.device_id,
@@ -566,9 +590,11 @@ class LicenseManager:
                 local_data["last_verified_at"] = now_iso
                 self.save_local_license(local_data)
 
+                server_code = data.get("status_code", "ACTIVE")
+                logger.info("Verify response status_code=%r -> %r", server_code, normalize_status_code(server_code))
                 self.current_state = LicenseState(
                     is_valid=True,
-                    status_code=data.get("status_code", "ACTIVE"),
+                    status_code=normalize_status_code(server_code),
                     message=data.get("message", "License verified successfully"),
                     license_key=key,
                     device_id=self.device_id,

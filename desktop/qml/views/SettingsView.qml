@@ -179,9 +179,12 @@ Flickable {
         }
 
         // ---------------------------------------------------------
-        // Card 2: 30-Day Free Trial (Net Time Verified)
+        // Card 2: Trial / License Expiry Countdown
         // ---------------------------------------------------------
         Rectangle {
+            id: card2
+            property bool licenseMode: Bridge.isLicensed && Bridge.licenseStatusCode !== "TRIAL"
+
             Layout.fillWidth: true
             radius: Theme.radiusMd
             color: Theme.surface
@@ -205,13 +208,13 @@ Flickable {
                     ColumnLayout {
                         spacing: 2
                         Text {
-                            text: I18n.t("section_trial_title")
+                            text: card2.licenseMode ? I18n.t("section_license_title") : I18n.t("section_trial_title")
                             color: Theme.textPrimary
                             font.pixelSize: 14
                             font.bold: true
                         }
                         Text {
-                            text: I18n.t("section_trial_desc")
+                            text: card2.licenseMode ? I18n.t("section_license_desc") : I18n.t("section_trial_desc")
                             color: Theme.textMuted
                             font.pixelSize: 11
                         }
@@ -239,7 +242,7 @@ Flickable {
                                 iconColor: Theme.primaryLight
                             }
                             Text {
-                                text: I18n.t("trial_refresh_btn")
+                                text: card2.licenseMode ? I18n.t("license_refresh_btn") : I18n.t("trial_refresh_btn")
                                 color: Theme.primaryLight
                                 font.pixelSize: 11
                                 font.bold: true
@@ -251,7 +254,7 @@ Flickable {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: Bridge.refreshTrialStatus()
+                            onClicked: card2.licenseMode ? Bridge.verifyLicense() : Bridge.refreshTrialStatus()
                         }
                     }
                 }
@@ -275,14 +278,18 @@ Flickable {
                             RowLayout {
                                 spacing: 8
                                 Text {
-                                    text: Bridge.trialDaysRemaining + " " + I18n.t("days_left") + ", " + Bridge.trialHoursRemaining + "h"
+                                    text: card2.licenseMode
+                                          ? Bridge.licenseCountdownText
+                                          : Bridge.trialDaysRemaining + " " + I18n.t("days_left") + ", " + Bridge.trialHoursRemaining + "h"
                                     color: Theme.primaryLight
                                     font.pixelSize: 17
                                     font.bold: true
                                 }
                             }
                             Text {
-                                text: I18n.t("trial_remaining_suffix")
+                                text: card2.licenseMode
+                                      ? (Bridge.licenseIsPerpetual ? I18n.t("license_perpetual_suffix") : I18n.t("license_remaining_suffix"))
+                                      : I18n.t("trial_remaining_suffix")
                                 color: Theme.textMuted
                                 font.pixelSize: 10
                                 Layout.alignment: Qt.AlignHCenter
@@ -301,18 +308,26 @@ Flickable {
                                 width: 8
                                 height: 8
                                 radius: 4
-                                color: Bridge.isNetworkTimeSynced ? Theme.success : Theme.warning
+                                color: (!card2.licenseMode && Bridge.isNetworkTimeSynced) || (card2.licenseMode && Bridge.isLicensed)
+                                       ? Theme.success
+                                       : (card2.licenseMode ? Theme.error : Theme.warning)
                             }
                             Text {
-                                text: Bridge.isNetworkTimeSynced ? I18n.t("trial_net_verified") : I18n.t("trial_local_verified")
-                                color: Bridge.isNetworkTimeSynced ? Theme.success : Theme.warning
+                                text: card2.licenseMode
+                                      ? (Bridge.licenseMessage || I18n.t("field_license_status"))
+                                      : (Bridge.isNetworkTimeSynced ? I18n.t("trial_net_verified") : I18n.t("trial_local_verified"))
+                                color: (!card2.licenseMode && Bridge.isNetworkTimeSynced) || (card2.licenseMode && Bridge.isLicensed)
+                                       ? Theme.success
+                                       : (card2.licenseMode ? Theme.error : Theme.warning)
                                 font.pixelSize: 11
                                 font.bold: true
                             }
                         }
 
                         Text {
-                            text: I18n.t("trial_expires_on") + Bridge.trialExpiresAt
+                            text: card2.licenseMode
+                                  ? I18n.t("license_expires_on") + (Bridge.licenseExpiresAt || "Perpetual")
+                                  : I18n.t("trial_expires_on") + Bridge.trialExpiresAt
                             color: Theme.textSecondary
                             font.pixelSize: 11
                         }
@@ -473,13 +488,18 @@ Flickable {
                             Text {
                                 anchors.centerIn: parent
                                 text: {
-                                    if (Bridge.licenseStatusCode === "ACTIVE") return I18n.t("status_licensed");
-                                    if (Bridge.licenseStatusCode === "TRIAL") return I18n.t("status_trial");
+                                    var s = Bridge.licenseStatusCode;
+                                    if (Bridge.isLicensed && s === "TRIAL") return I18n.t("status_trial");
+                                    if (Bridge.isLicensed && s === "ACTIVE_OFFLINE") return I18n.t("status_offline");
+                                    if (Bridge.isLicensed) return I18n.t("status_licensed");
+                                    if (s === "TRIAL_EXPIRED") return I18n.t("status_trial_expired");
+                                    if (s === "EXPIRED" || s === "OFFLINE_EXPIRED") return I18n.t("status_code_expired");
                                     return I18n.t("status_activation_required");
                                 }
                                 color: {
-                                    if (Bridge.licenseStatusCode === "ACTIVE") return Theme.success;
-                                    if (Bridge.licenseStatusCode === "TRIAL") return Theme.primaryLight;
+                                    var s = Bridge.licenseStatusCode;
+                                    if (Bridge.isLicensed) return s === "TRIAL" ? Theme.primaryLight : Theme.success;
+                                    if (s === "TRIAL_EXPIRED" || s === "EXPIRED" || s === "OFFLINE_EXPIRED") return Theme.error;
                                     return Theme.error;
                                 }
                                 font.pixelSize: 11
