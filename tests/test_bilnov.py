@@ -385,7 +385,7 @@ class TestBilnovGallery(unittest.TestCase):
         self.assertEqual(payload_e, {})
 
     # -------------------------------------------------------------
-    # 4. 30-Day Offline Grace Period
+    # 4. 7-Day Offline Grace Period
     # -------------------------------------------------------------
 
     def test_offline_grace_period(self):
@@ -395,21 +395,21 @@ class TestBilnovGallery(unittest.TestCase):
         # Simulate unreachable server
         offline_lic = LicenseManager(server_url="http://127.0.0.1:9999", license_file=self.license_file)
         ok, msg = offline_lic.verify_license()
-        self.assertTrue(ok, "Within 30 days offline grace, verification must succeed")
+        self.assertTrue(ok, "Within 7 days offline grace, verification must succeed")
         self.assertEqual(offline_lic.current_state.status_code, "ACTIVE_OFFLINE")
-        self.assertGreaterEqual(offline_lic.current_state.offline_days_remaining, 29)
+        self.assertGreaterEqual(offline_lic.current_state.offline_days_remaining, 6)
 
-        # Simulate expired offline grace (> 30 days)
+        # Simulate expired offline grace (> 7 days)
         with open(self.license_file, "r") as f:
             data = json.load(f)
-        past_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=31)).isoformat()
+        past_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)).isoformat()
         data["last_verified_at"] = past_time
         data["checksum"] = compute_license_checksum(data)
         with open(self.license_file, "w") as f:
             json.dump(data, f)
 
         ok_expired, msg_expired = offline_lic.verify_license()
-        self.assertFalse(ok_expired, "After 30 days offline, verification must fail")
+        self.assertFalse(ok_expired, "After 7 days offline, verification must fail")
         self.assertEqual(offline_lic.current_state.status_code, "OFFLINE_EXPIRED")
 
     # -------------------------------------------------------------

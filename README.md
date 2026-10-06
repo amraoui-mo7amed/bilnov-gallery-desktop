@@ -25,7 +25,7 @@ A modern, high-performance native desktop application built with **PySide6 (Qt Q
   - 64-character deterministic hardware fingerprint (`device_id`).
   - Atomic local license storage in `~/.zed_license.json` with HMAC-SHA256 anti-tamper checksums.
   - Initial activation workflow (`POST /api/v1/license/activate`) with optional customer details (30-day activation duration).
-  - Subsequent verification handshake (`POST /api/v1/license/verify`) with **30-Day Offline Grace Period**.
+  - Subsequent verification handshake (`POST /api/v1/license/verify`) with **7-Day Offline Grace Period**.
   - Background heartbeat check (`POST /api/v1/license/heartbeat`) every 4 hours.
   - Client registration & inquiry (`POST /api/v1/client/profile`, `GET /api/v1/client/status`) to request a license key and track `PENDING_LICENSE` / `ACTIVE` / `EXPIRED` status.
 

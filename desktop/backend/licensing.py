@@ -5,7 +5,7 @@ Strictly implements the complete licensing lifecycle specified in openapi.json:
 1. Public Machine-to-Machine Access (no administrator credentials required)
 2. First Launch (Initial Activation) with 64-char deterministic hardware ID (device_id)
    and storage in ~/.zed_license.json
-3. Verification Handshake with 30-Day Offline Grace Period (OFFLINE_GRACE)
+3. Verification Handshake with 7-Day Offline Grace Period (OFFLINE_GRACE)
 4. Runtime Heartbeat (every 4 hours)
 5. Cryptographic Anti-Tampering (HMAC-SHA256 signature and atomic disk storage)
 6. Client Registration & Inquiry (/api/v1/client/profile, /api/v1/client/status)
@@ -423,6 +423,7 @@ class LicenseManager:
         email: str = "",
         phone: str = "",
         address: str = "",
+        lang: str = "en",
     ) -> Tuple[bool, str]:
         """
         Initial Activation (POST /api/v1/license/activate)
@@ -441,6 +442,7 @@ class LicenseManager:
         payload: Dict[str, Any] = {
             "license_key": key,
             "device_id": self.device_id,
+            "lang": lang,
         }
 
         if cust_name or cust_email or cust_phone:
@@ -500,7 +502,7 @@ class LicenseManager:
         elif resp.status_code == 401:
             msg = (
                 "Licensing server returned HTTP 401 (Unauthorized). "
-                "Please contact support (+213775189229 / +213796629314)."
+                "Please contact support (+213775189229 / +213673782115)."
             )
             logger.warning(msg)
             return False, msg
@@ -508,11 +510,11 @@ class LicenseManager:
             msg = data.get("message") or f"Activation rejected (HTTP {resp.status_code})"
             return False, msg
 
-    def verify_license(self) -> Tuple[bool, str]:
+    def verify_license(self, lang: str = "en") -> Tuple[bool, str]:
         """
         Verification Handshake (POST /api/v1/license/verify)
         Checks local checksum, binds to device_id, and synchronizes status with server.
-        Permits 30-Day Offline Grace Period if server is unreachable.
+        Permits 7-Day Offline Grace Period if server is unreachable.
         """
         local_data = self.load_local_license()
         if getattr(self, "_tampered_detected", False):
@@ -570,6 +572,7 @@ class LicenseManager:
         payload = {
             "license_key": key,
             "device_id": self.device_id,
+            "lang": lang,
         }
 
         try:
@@ -658,13 +661,13 @@ class LicenseManager:
         self.current_state = LicenseState(
             is_valid=False,
             status_code="OFFLINE_EXPIRED",
-            message="30-Day Offline Grace Period has expired. Please connect to internet to verify license.",
+            message="7-Day Offline Grace Period has expired. Please connect to internet to verify license.",
             license_key=key,
             device_id=self.device_id,
         )
         return False, "Offline grace period expired"
 
-    def heartbeat(self) -> Tuple[bool, str]:
+    def heartbeat(self, lang: str = "en") -> Tuple[bool, str]:
         """
         Runtime Heartbeat (POST /api/v1/license/heartbeat)
         Background check every 4 hours. Immediately locks UI if revoked or expired.
@@ -705,6 +708,7 @@ class LicenseManager:
         payload = {
             "license_key": key,
             "device_id": self.device_id,
+            "lang": lang,
         }
 
         try:
@@ -713,7 +717,7 @@ class LicenseManager:
         except Exception as e:
             # Network failure during heartbeat: fallback to offline grace period
             logger.info("Heartbeat network timeout (%s), performing offline grace check", e)
-            return self.verify_license()
+            return self.verify_license(lang=lang)
 
         if resp.status_code == 200 and data.get("success"):
             is_active = data.get("is_active", False)
@@ -754,7 +758,7 @@ class LicenseManager:
             return True, "Heartbeat OK"
         elif resp.status_code == 401:
             logger.warning("Heartbeat returned HTTP 401 (Unauthorized). Skipping revocation; checking offline grace.")
-            return self.verify_license()
+            return self.verify_license(lang=lang)
         else:
             msg = data.get("message", "License validation failed on heartbeat")
             self.current_state = LicenseState(
@@ -776,6 +780,7 @@ class LicenseManager:
         email: str,
         phone: str,
         address: str = "",
+        lang: str = "en",
     ) -> Tuple[bool, str]:
         """
         Client Registration (POST /api/v1/client/profile)
@@ -800,6 +805,7 @@ class LicenseManager:
             "phone": cust_phone,
             "address": address.strip(),
             "device_id": self.device_id,
+            "lang": lang,
         }
 
         url = f"{self.server_url}/api/v1/client/profile"
@@ -817,9 +823,9 @@ class LicenseManager:
             return False, msg
         return True, data.get("message") or "Profile registered. Wait for an administrator to generate your license key."
 
-    def query_client_status(self, query: str) -> Tuple[bool, str, Dict[str, Any]]:
+    def query_client_status(self, query: str, lang: str = "en") -> Tuple[bool, str, Dict[str, Any]]:
         """
-        Client Status Inquiry (GET /api/v1/client/status?query=...)
+        Client Status Inquiry (GET /api/v1/client/status?query=&lang=)
         Looks up registration and license status by device ID, email, or phone:
         PENDING_LICENSE / ACTIVE / UNBOUND / EXPIRED.
         Returns: (success, message, payload)
@@ -830,7 +836,7 @@ class LicenseManager:
 
         url = f"{self.server_url}/api/v1/client/status"
         try:
-            resp = self.session.get(url, params={"query": q}, timeout=10)
+            resp = self.session.get(url, params={"query": q, "lang": lang}, timeout=10)
             data = resp.json() if resp.text else {}
         except Exception as e:
             logger.error("Client status inquiry failed: %s", e)

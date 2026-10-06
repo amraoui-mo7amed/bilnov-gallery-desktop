@@ -379,7 +379,7 @@ Flickable {
                         Layout.fillWidth: true
                         spacing: 2
                         Text {
-                            text: I18n.t("section_license_title")
+                            text: I18n.t("section_license_details_title")
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             color: Theme.textPrimary
@@ -387,7 +387,7 @@ Flickable {
                             font.bold: true
                         }
                         Text {
-                            text: I18n.t("section_license_desc")
+                            text: I18n.t("section_license_details_desc")
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             color: Theme.textMuted
@@ -1107,7 +1107,7 @@ Flickable {
                             font.pixelSize: 10
                         }
                         Text {
-                            text: Bridge.appVersion || "v1.4.3"
+                            text: Bridge.appVersion || "v1.4.4"
                             color: Theme.primaryLight
                             font.pixelSize: 12
                             font.bold: true
@@ -1146,7 +1146,7 @@ Flickable {
                         }
                     }
 
-                    // Contact Phone Numbers
+                    // Contact Phone Numbers (both numbers on a single row)
                     ColumnLayout {
                         spacing: 4
                         Text {
@@ -1154,36 +1154,39 @@ Flickable {
                             color: Theme.textMuted
                             font.pixelSize: 10
                         }
-                        Repeater {
-                            model: ["+213775189229", "+213796629314"]
-                            RowLayout {
-                                spacing: 8
-                                Text {
-                                    text: modelData
-                                    color: Theme.primaryLight
-                                    font.pixelSize: 12
-                                    font.family: "Monospace"
-                                    font.bold: true
-                                }
-                                Rectangle {
-                                    width: 22
-                                    height: 22
-                                    radius: 4
-                                    color: copyPhoneMouse.containsMouse ? Theme.primaryHover : Theme.surfaceElevated
-                                    border.color: Theme.border
-                                    FaIcon {
-                                        anchors.centerIn: parent
-                                        icon: Icons.copy
-                                        size: 10
-                                        iconColor: copyPhoneMouse.containsMouse ? "white" : Theme.textMuted
+                        RowLayout {
+                            spacing: 16
+                            Repeater {
+                                model: ["+213775189229", "+213673782115"]
+                                RowLayout {
+                                    spacing: 8
+                                    Text {
+                                        text: modelData
+                                        color: Theme.primaryLight
+                                        font.pixelSize: 12
+                                        font.family: "Monospace"
+                                        font.bold: true
                                     }
-                                    MouseArea {
-                                        id: copyPhoneMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            Bridge.copyToClipboard(modelData)
+                                    Rectangle {
+                                        width: 22
+                                        height: 22
+                                        radius: 4
+                                        color: copyPhoneMouse.containsMouse ? Theme.primaryHover : Theme.surfaceElevated
+                                        border.color: Theme.border
+                                        FaIcon {
+                                            anchors.centerIn: parent
+                                            icon: Icons.copy
+                                            size: 10
+                                            iconColor: copyPhoneMouse.containsMouse ? "white" : Theme.textMuted
+                                        }
+                                        MouseArea {
+                                            id: copyPhoneMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                Bridge.copyToClipboard(modelData)
+                                            }
                                         }
                                     }
                                 }

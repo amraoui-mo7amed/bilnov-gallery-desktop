@@ -243,7 +243,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v1.4.3"
+        return "v1.4.4"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
@@ -299,7 +299,15 @@ class AppBridge(QObject):
     def activateLicense(self, key: str, name: str, email: str, phone: str, address: str = ""):
         """Invokes initial activation endpoint POST /api/v1/license/activate."""
         def _task():
-            return self.lic.activate_license(key, name, email, phone, address)
+            res = self.lic.activate_license(key, name, email, phone, address, lang=self.language)
+            # Refresh the cached trial countdown immediately so every QML
+            # binding (trial + license) updates as soon as the key is entered,
+            # instead of waiting for the deferred application restart.
+            try:
+                self.lic.evaluate_trial_detailed(use_network=False)
+            except Exception:
+                logger.exception("Immediate trial countdown refresh failed after activation")
+            return res
 
         def _on_success(res):
             success, msg = res
@@ -344,7 +352,7 @@ class AppBridge(QObject):
     def verifyLicense(self):
         """Verifies license with handshake POST /api/v1/license/verify with offline grace check."""
         def _task():
-            return self.lic.verify_license()
+            return self.lic.verify_license(lang=self.language)
 
         def _on_success(res):
             success, msg = res
@@ -366,7 +374,7 @@ class AppBridge(QObject):
     def checkHeartbeat(self):
         """Background heartbeat query POST /api/v1/license/heartbeat."""
         def _task():
-            return self.lic.heartbeat()
+            return self.lic.heartbeat(lang=self.language)
 
         def _on_success(res):
             success, msg = res
@@ -380,7 +388,7 @@ class AppBridge(QObject):
     def registerClientProfile(self, name: str, email: str, phone: str, address: str = ""):
         """Client profile creation POST /api/v1/client/profile (waits for admin license key)."""
         def _task():
-            return self.lic.register_client_profile(name, email, phone, address)
+            return self.lic.register_client_profile(name, email, phone, address, lang=self.language)
 
         def _on_success(res):
             success, msg = res
@@ -400,7 +408,7 @@ class AppBridge(QObject):
     def checkClientStatus(self, query: str):
         """Client license/profile status lookup GET /api/v1/client/status?query=..."""
         def _task():
-            return self.lic.query_client_status(query)
+            return self.lic.query_client_status(query, lang=self.language)
 
         def _on_success(res):
             success, msg, data = res

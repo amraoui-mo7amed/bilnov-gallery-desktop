@@ -1,6 +1,11 @@
-- [x] Remove the Scraper and all its related configs Entirely 
-- [x] Read and intehrate the `openapi.json`
-- [x] Delete the Settings Pane Directly 
-- [x] The App Must Read one folder `./data`
-- [x] Data Folder Must Be Protected from the write/copy/sending
-- [x] Add A button in each card article to open the exact article location 
+- [ ] Update the App configs based on `openapi.json`:
+- [ ] Change the phone number `+21396629314` with `+213673782115`
+- [ ] Put the two numbers in the same row 
+- [ ] Change the sidebar title buttons to 
+    - `Library`
+    - `Category`
+- [ ] Update the translation strins 
+- [ ] Update the trial countdown immediately when the license is entered 
+
+
+

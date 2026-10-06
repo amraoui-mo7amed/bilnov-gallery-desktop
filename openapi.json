@@ -3,7 +3,7 @@
   "info": {
     "title": "Bilnov Gallery License Management & Desktop Client API",
     "version": "1.0.0",
-    "description": "\n### Bilnov Gallery Desktop Client Integration & Licensing API\n\nThis REST API manages the complete licensing lifecycle for the Bilnov Gallery Desktop Client application.\n\n#### Comprehensive Desktop Client Workflow:\n1. **Access Control**:\n   - All license endpoints are public machine-to-machine APIs and never require administrator credentials.\n   - Integrity is ensured by the HMAC-SHA256 signature included in every response.\n   - Interactive OpenAPI Swagger documentation (`/api/v1/docs`) is protected and viewable solely by authenticated administrators.\n\n2. **First Launch (Initial Activation)**:\n   - Derives a 64-character deterministic SHA-256 hardware identifier (`device_id`).\n   - Checks local storage file (`~/.zed_license.json`). If missing or corrupted, prompts the user with `ActivationDialog`.\n   - Forces the customer to provide their full legal Name, valid Email address, and Phone number before activating.\n   - Calls `POST /api/v1/license/activate`. On success, binds the license to the requesting hardware and updates the Customer record in the central database.\n   - Atomically writes license details, verification timestamp, and cryptographic HMAC-SHA256 signature to disk.\n\n3. **Subsequent Launches (Verification Handshake)**:\n   - Validates local file checksum and matches the local hardware fingerprint.\n   - Calls `POST /api/v1/license/verify` to synchronize status and obtain any administrator extensions or status updates.\n   - If the server is unreachable due to network failure, permits a **30-Day Offline Grace Period** (`OFFLINE_GRACE`).\n   - If the license was locally expired but extended on the server, online verification immediately re-activates the desktop client.\n\n4. **Runtime Heartbeat**:\n   - Background timer queries `POST /api/v1/license/heartbeat` periodically (every 4 hours).\n   - Immediately locks the UI if an administrator revokes or disables the license from the dashboard.\n\n5. **Cryptographic Anti-Tampering**:\n   - Every server response includes an HMAC-SHA256 signature generated using the server's private secret.\n   - Protects against proxy manipulation (MITM) and client-side memory alteration.\n"
+    "description": "\n### Bilnov Gallery Desktop Client Integration & Licensing API\n\nThis REST API manages the complete licensing lifecycle for the Bilnov Gallery Desktop Client application.\n\n#### Comprehensive Desktop Client Workflow:\n1. **Access Control**:\n   - All license endpoints are public machine-to-machine APIs and never require administrator credentials.\n   - Integrity is ensured by the HMAC-SHA256 signature included in every response.\n   - Interactive OpenAPI Swagger documentation (`/api/v1/docs`) is protected and viewable solely by authenticated administrators.\n\n2. **First Launch (Initial Activation)**:\n   - Derives a 64-character deterministic SHA-256 hardware identifier (`device_id`).\n   - Checks local storage file (`~/.zed_license.json`). If missing or corrupted, prompts the user with `ActivationDialog`.\n   - Forces the customer to provide their full legal Name, valid Email address, and Phone number before activating.\n   - Calls `POST /api/v1/license/activate`. On success, binds the license to the requesting hardware and updates the Customer record in the central database.\n   - Atomically writes license details, verification timestamp, and cryptographic HMAC-SHA256 signature to disk.\n\n3. **Subsequent Launches (Verification Handshake)**:\n   - Validates local file checksum and matches the local hardware fingerprint.\n   - Calls `POST /api/v1/license/verify` to synchronize status and obtain any administrator extensions or status updates.\n   - If the server is unreachable due to network failure, permits a **7-Day Offline Grace Period** (`OFFLINE_GRACE`).\n   - If the license was locally expired but extended on the server, online verification immediately re-activates the desktop client.\n\n4. **Runtime Heartbeat**:\n   - Background timer queries `POST /api/v1/license/heartbeat` periodically (every 4 hours).\n   - Immediately locks the UI if an administrator revokes or disables the license from the dashboard.\n\n5. **Cryptographic Anti-Tampering**:\n   - Every server response includes an HMAC-SHA256 signature generated using the server's private secret.\n   - Protects against proxy manipulation (MITM) and client-side memory alteration.\n"
   },
   "paths": {
     "/api/v1/client/profile": {
@@ -124,6 +124,16 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "default": "en",
+              "title": "Lang",
+              "type": "string"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -316,6 +326,16 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "default": "en",
+              "title": "Lang",
+              "type": "string"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -467,6 +487,12 @@
             ],
             "description": "Client machine hardware fingerprint",
             "title": "Device Id"
+          },
+          "lang": {
+            "default": "en",
+            "description": "Response language code: en | fr",
+            "title": "Lang",
+            "type": "string"
           }
         },
         "required": [
@@ -699,6 +725,12 @@
               }
             ],
             "description": "Optional customer details"
+          },
+          "lang": {
+            "default": "en",
+            "description": "Response language code: en | fr",
+            "title": "Lang",
+            "type": "string"
           }
         },
         "required": [
@@ -835,6 +867,12 @@
             "minLength": 16,
             "title": "Device Id",
             "type": "string"
+          },
+          "lang": {
+            "default": "en",
+            "description": "Response language code: en | fr",
+            "title": "Lang",
+            "type": "string"
           }
         },
         "required": [
@@ -907,6 +945,12 @@
           },
           "device_id": {
             "title": "Device Id",
+            "type": "string"
+          },
+          "lang": {
+            "default": "en",
+            "description": "Response language code: en | fr",
+            "title": "Lang",
             "type": "string"
           }
         },

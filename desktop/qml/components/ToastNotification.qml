@@ -5,12 +5,12 @@ import "."
 
 Item {
     id: root
-    width: 320
-    height: 60
-    anchors.top: parent.top
-    anchors.right: parent.right
-    anchors.topMargin: 20
-    anchors.rightMargin: 20
+    width: Math.min(420, Math.max(280, msgText.implicitWidth + 48))
+    height: Math.max(48, msgText.height + 24)
+    anchors.bottom: parent.bottom
+    anchors.left: parent.left
+    anchors.bottomMargin: 5
+    anchors.leftMargin: 20
     z: 9999
 
     property string message: ""
@@ -71,15 +71,14 @@ Item {
             }
 
             Text {
+                id: msgText
                 text: root.message
                 color: Theme.textPrimary
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 50
+                width: root.width - 48
                 wrapMode: Text.Wrap
-                elide: Text.ElideRight
-                maximumLineCount: 2
             }
         }
     }
