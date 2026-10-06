@@ -1107,7 +1107,7 @@ Flickable {
                             font.pixelSize: 10
                         }
                         Text {
-                            text: Bridge.appVersion || "v1.4.2"
+                            text: Bridge.appVersion || "v1.4.3"
                             color: Theme.primaryLight
                             font.pixelSize: 12
                             font.bold: true
