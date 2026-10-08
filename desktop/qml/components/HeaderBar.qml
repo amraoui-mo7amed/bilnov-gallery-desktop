@@ -19,11 +19,9 @@ Rectangle {
 
     property string title: I18n.t("header_gallery_title")
     property string subtitle: I18n.t("header_gallery_subtitle")
-    property bool isSettingsActive: false
 
     signal searchRequested(string query)
-    signal toggleSettings()
-    signal backToLibrary()
+    signal openLicense()
 
     RowLayout {
         anchors.fill: parent
@@ -36,32 +34,17 @@ Rectangle {
             spacing: 12
             layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
 
-            // Back button (when in settings) OR App icon (default library view)
+            // App Icon
             Rectangle {
                 width: 36
                 height: 36
                 radius: Theme.radiusMd
-                color: root.isSettingsActive
-                    ? (backMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surfaceElevated)
-                    : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
-                border.color: root.isSettingsActive
-                    ? (backMouse.containsMouse ? Theme.primaryLight : Theme.border)
-                    : Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.3)
+                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                border.color: Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.3)
                 border.width: 1
                 clip: true
 
-                Behavior on color { ColorAnimation { duration: 150 } }
-
-                FaIcon {
-                    visible: root.isSettingsActive
-                    anchors.centerIn: parent
-                    icon: Icons.arrowLeft
-                    size: 13
-                    iconColor: backMouse.containsMouse ? "white" : Theme.primaryLight
-                }
-
                 Image {
-                    visible: !root.isSettingsActive
                     anchors.centerIn: parent
                     width: 28
                     height: 28
@@ -69,22 +52,6 @@ Rectangle {
                     fillMode: Image.PreserveAspectFit
                     smooth: true
                     mipmap: true
-                }
-
-                ToolTip.visible: root.isSettingsActive && backMouse.containsMouse
-                ToolTip.text: I18n.t("back_to_library")
-                ToolTip.delay: 300
-
-                MouseArea {
-                    id: backMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: root.isSettingsActive ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: {
-                        if (root.isSettingsActive) {
-                            root.backToLibrary()
-                        }
-                    }
                 }
             }
 
@@ -110,7 +77,6 @@ Rectangle {
 
         // Quick Search Field (filters local ./data library)
         Rectangle {
-            visible: !root.isSettingsActive
             width: 280
             height: 36
             radius: Theme.radiusMd
@@ -169,11 +135,58 @@ Rectangle {
             }
         }
 
+        // Language Toggle Button (show English when French is active, French when English is active)
+        Rectangle {
+            height: 36
+            Layout.minimumWidth: langRow.implicitWidth + 24
+            Layout.preferredWidth: langRow.implicitWidth + 24
+            radius: Theme.radiusMd
+            color: langMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : Theme.surfaceElevated
+            border.color: langMouse.containsMouse ? Theme.primaryLight : Theme.border
+            border.width: 1
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            RowLayout {
+                id: langRow
+                anchors.centerIn: parent
+                spacing: 6
+                FaIcon {
+                    icon: Icons.globe
+                    size: 12
+                    iconColor: Theme.primaryLight
+                }
+                Text {
+                    text: I18n.currentLanguage === "fr" ? "English" : "Français"
+                    color: Theme.textPrimary
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+            }
+
+            ToolTip.visible: langMouse.containsMouse
+            ToolTip.text: I18n.currentLanguage === "fr" ? "Switch to English" : "Passer en Français"
+            ToolTip.delay: 300
+
+            MouseArea {
+                id: langMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (I18n.currentLanguage === "fr") {
+                        I18n.setLanguage("en")
+                    } else {
+                        I18n.setLanguage("fr")
+                    }
+                }
+            }
+        }
+
         // Open ./data Storage Directory
         Rectangle {
-            Layout.minimumWidth: storageRow.implicitWidth + 32
-            Layout.preferredWidth: storageRow.implicitWidth + 32
-            Layout.maximumWidth: 210
+            Layout.minimumWidth: storageRow.implicitWidth + 24
+            Layout.preferredWidth: storageRow.implicitWidth + 24
             height: 36
             radius: Theme.radiusMd
             color: storageMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : Theme.surfaceElevated
@@ -205,37 +218,66 @@ Rectangle {
             }
         }
 
-        // Settings Button (Icon-Only in the Header)
+        // License Button (Green: Activated, Orange: Trial, Red: Not Activated)
         Rectangle {
-            width: 36
+            id: licenseBtn
             height: 36
+            Layout.minimumWidth: licenseRow.implicitWidth + 24
+            Layout.preferredWidth: licenseRow.implicitWidth + 24
             radius: Theme.radiusMd
-            color: {
-                if (root.isSettingsActive) return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25);
-                return settingsMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Theme.surfaceElevated;
+
+            readonly property color statusColor: {
+                if (Bridge.isLicensed && !Bridge.isTrial) return Theme.success;
+                if (Bridge.isTrial) return Theme.warning;
+                return Theme.error;
             }
-            border.color: root.isSettingsActive ? Theme.primary : (settingsMouse.containsMouse ? Theme.primaryLight : Theme.border)
+
+            color: licMouse.containsMouse
+                ? Qt.rgba(statusColor.r, statusColor.g, statusColor.b, 0.28)
+                : Qt.rgba(statusColor.r, statusColor.g, statusColor.b, 0.15)
+            border.color: statusColor
             border.width: 1
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
-            FaIcon {
+            RowLayout {
+                id: licenseRow
                 anchors.centerIn: parent
-                icon: Icons.cog
-                size: 14
-                iconColor: root.isSettingsActive ? Theme.primaryLight : (settingsMouse.containsMouse ? Theme.textPrimary : Theme.textMuted)
+                spacing: 6
+                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
+
+                FaIcon {
+                    icon: {
+                        if (Bridge.isLicensed && !Bridge.isTrial) return Icons.checkCircle;
+                        if (Bridge.isTrial) return Icons.clock;
+                        return Icons.key;
+                    }
+                    size: 12
+                    iconColor: licenseBtn.statusColor
+                }
+
+                Text {
+                    text: {
+                        if (Bridge.isLicensed && !Bridge.isTrial) return I18n.t("status_licensed");
+                        if (Bridge.isTrial) return I18n.t("status_trial") + " (" + Bridge.trialDaysRemaining + "d)";
+                        return I18n.t("status_activation_required");
+                    }
+                    color: licenseBtn.statusColor
+                    font.pixelSize: 11
+                    font.bold: true
+                }
             }
 
-            ToolTip.visible: settingsMouse.containsMouse
-            ToolTip.text: root.isSettingsActive ? I18n.t("back_to_library") : I18n.t("nav_settings")
+            ToolTip.visible: licMouse.containsMouse
+            ToolTip.text: I18n.t("manage_license")
             ToolTip.delay: 300
 
             MouseArea {
-                id: settingsMouse
+                id: licMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleSettings()
+                onClicked: root.openLicense()
             }
         }
     }

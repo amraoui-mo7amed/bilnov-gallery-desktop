@@ -317,6 +317,41 @@ class LibraryManager:
             })
         return tree
 
+    def get_subcategories(self, category: Optional[str] = None) -> List[str]:
+        """Returns unique subcategory names found in storage, optionally filtered by category."""
+        subcats: Set[str] = set()
+        if not self.base_dir.exists():
+            return []
+
+        # 1. Collect directly from folder hierarchy: storage/<Category>/<Subcategory>/
+        try:
+            for cat_dir in sorted(self.base_dir.iterdir()):
+                if not cat_dir.is_dir() or cat_dir.name.startswith(".") or self.is_article_dir(cat_dir):
+                    continue
+                if category and category.strip() and cat_dir.name.lower() != category.strip().lower():
+                    continue
+                for sub_dir in sorted(cat_dir.iterdir()):
+                    if not sub_dir.is_dir() or sub_dir.name.startswith(".") or self.is_article_dir(sub_dir):
+                        continue
+                    subcats.add(sub_dir.name)
+        except Exception as e:
+            logger.error("Error reading subcategories from disk: %s", e)
+
+        # 2. Collect from scanned library items
+        try:
+            items = self.scan_library().get("items", [])
+            target = category.strip().lower() if category and category.strip() else None
+            for itm in items:
+                c = (itm.get("category") or "").strip()
+                s = (itm.get("subcategory") or "").strip()
+                if s and s.lower() != "general":
+                    if not target or c.lower() == target:
+                        subcats.add(s)
+        except Exception:
+            pass
+
+        return sorted(list(subcats), key=lambda x: x.lower())
+
     def add_item(
         self,
         title: str,

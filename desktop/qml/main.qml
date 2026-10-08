@@ -15,9 +15,6 @@ ApplicationWindow {
     title: "olga+ • 3D Asset Platform"
     color: Theme.background
 
-    // 0: LibraryView, 1: SettingsView
-    property int activeTab: 0
-
     // Font Awesome Loaders
     FontLoader {
         id: faSolidLoader
@@ -36,7 +33,7 @@ ApplicationWindow {
         }
     }
 
-    // Main Content Area (Sidebar removed: Library is default and only widget)
+    // Main Content Area: LibraryView is the only widget (Sidebar and SettingsView removed)
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -48,49 +45,33 @@ ApplicationWindow {
             Layout.minimumHeight: 60
             Layout.fillWidth: true
             Layout.fillHeight: false
-            isSettingsActive: window.activeTab === 1
-            title: window.activeTab === 1 ? I18n.t("header_settings_title") : I18n.t("header_gallery_title")
-            subtitle: window.activeTab === 1 ? I18n.t("header_settings_subtitle") : I18n.t("header_gallery_subtitle")
             onSearchRequested: function(query) {
-                window.activeTab = 0
                 libraryView.setSearchQuery(query)
             }
-            onToggleSettings: {
-                window.activeTab = (window.activeTab === 1 ? 0 : 1)
-            }
-            onBackToLibrary: {
-                window.activeTab = 0
+            onOpenLicense: {
+                licenseDialog.open()
             }
         }
 
-        // Views Stack
-        StackLayout {
-            id: viewsStack
+        // Library View is the default and only primary view
+        LibraryView {
+            id: libraryView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: window.activeTab
-
-            LibraryView {
-                id: libraryView
-                onOpenGallery: function(images, title) {
-                    lightbox.open(images, title, 0)
-                }
-                onAddItemRequested: addItemDialog.open()
+            onOpenGallery: function(images, title) {
+                lightbox.open(images, title, 0)
             }
-
-            SettingsView {
-                id: settingsView
-            }
+            onAddItemRequested: addItemDialog.open()
         }
     }
 
-    // License Lockout Barrier (Only shown when expired and not on settings tab)
+    // License Lockout Barrier (Shown only when expired/unlicensed and modal is not open)
     Rectangle {
         id: lockOverlay
         anchors.fill: parent
         z: 99990
         color: "#F0030712"
-        visible: !Bridge.isLicensed && window.activeTab !== 1
+        visible: !Bridge.isLicensed && !licenseDialog.visible
 
         ColumnLayout {
             anchors.centerIn: parent
@@ -132,7 +113,7 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.minimumWidth: lockBtnRow.implicitWidth + 32
                 Layout.preferredWidth: lockBtnRow.implicitWidth + 32
-                Layout.maximumWidth: 210
+                Layout.maximumWidth: 240
                 Layout.preferredHeight: 40
                 radius: 8
                 color: activateBtnMouse.containsMouse ? Theme.primaryHover : Theme.primary
@@ -142,12 +123,12 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     spacing: 8
                     FaIcon {
-                        icon: Icons.cog
+                        icon: Icons.key
                         size: 13
                         iconColor: "white"
                     }
                     Text {
-                        text: I18n.t("nav_settings")
+                        text: I18n.t("license_activate_btn")
                         color: "white"
                         font.pixelSize: 12
                         font.bold: true
@@ -160,21 +141,21 @@ ApplicationWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        window.activeTab = 1
+                        licenseDialog.open()
                     }
                 }
             }
         }
     }
 
+    // License Management & Activation Modal (Key only + Status + Phone numbers)
+    LicenseDialog {
+        id: licenseDialog
+    }
+
     // Global Photo Lightbox Modal
     LightboxModal {
         id: lightbox
-    }
-
-    // Global Licensing & Activation Modal (Available on demand)
-    ActivationDialog {
-        id: activationDialog
     }
 
     // Add Item to Library Modal

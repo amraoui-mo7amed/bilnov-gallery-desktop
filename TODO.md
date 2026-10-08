@@ -1,23 +1,7 @@
-- [x] Remove the sidebar so:
-    - the default and only widget is the library 
-    - change the header Library 
-    - Put the settings button as an icon-only in the header 
-- [x] Rename the app to `olga+`
-- [x] Create an icon for `olga+` and set it as app/fav/taskbar icon
-- [x] In Settings widget rewmove the following:
-    - the license details widget 
-    - the client's phone and adress 
-    - the details pane -that contains the numbers and depeloped by-
-- [x] Work on the new translation strings 
-- [x] Update how the app reads data inside storage folder so it follows this structure:
-    ```
-    - <category>
-    -- <Subcategory>/<asset name>/<images>
-    -- <Subcategory>/<asset name>/model/<arhcove file>
-    ```
-not 
-```
-    -<category>
-    -- <asset name>/<images>
-    -- <asset name>/model/<archive file>
-```
+- [x] Add the following in the header:
+    - a license button that shows the widget to input license key only -the button is green when the app is activated and orange when in trial mode and red when its not activated-
+    - the license modal shows the input for license key only and the contact phone numbers 
+    - a language button -show english when french is activated/show french when english is activated-
+- [x] remove the category filter dropdown
+- [x] remove the settings widget 
+

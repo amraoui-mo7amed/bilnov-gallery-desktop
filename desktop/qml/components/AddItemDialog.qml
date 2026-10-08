@@ -17,6 +17,26 @@ Rectangle {
     property var models: []      // absolute local paths
     property bool isSubmitting: false
     property string errorMessage: ""
+    property string selectedJob: "architect"
+    property var jobOptions: [
+        { id: "architect", folder: "Architect" },
+        { id: "graphiste", folder: "Graphiste" },
+        { id: "video maker", folder: "Video Maker" }
+    ]
+
+    function getJobDisplay(id) {
+        if (id === "architect") return I18n.currentLanguage === "fr" ? "Architecte" : "Architect";
+        if (id === "graphiste") return "Graphiste";
+        if (id === "video maker") return "Video Maker";
+        return id;
+    }
+
+    function getJobFolder(id) {
+        if (id === "architect") return "Architect";
+        if (id === "graphiste") return "Graphiste";
+        if (id === "video maker") return "Video Maker";
+        return id || "Architect";
+    }
 
     Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
 
@@ -24,7 +44,7 @@ Rectangle {
         images = []
         models = []
         nameInput.text = ""
-        categoryInput.text = ""
+        selectedJob = "architect"
         subcategoryInput.text = ""
         errorMessage = ""
         isSubmitting = false
@@ -93,7 +113,8 @@ Rectangle {
         if (images.length === 0) { errorMessage = I18n.t("add_err_images"); return }
         if (models.length === 0) { errorMessage = I18n.t("add_err_models"); return }
         isSubmitting = true
-        Bridge.addLibraryItem(nameInput.text.trim(), images, models, categoryInput.text.trim(), subcategoryInput.text.trim())
+        var jobFolder = getJobFolder(selectedJob)
+        Bridge.addLibraryItem(nameInput.text.trim(), images, models, jobFolder, subcategoryInput.text.trim())
     }
 
     Connections {
@@ -123,20 +144,49 @@ Rectangle {
         color: Theme.surface
         border.color: Theme.border
         border.width: 1
-        clip: true
+        // Exit / Close button pinned to top-right
+        Rectangle {
+            id: closeBtn
+            width: 32
+            height: 32
+            radius: 16
+            color: closeMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : "transparent"
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 16
+            anchors.rightMargin: 16
+            z: 20
 
-        MouseArea { anchors.fill: parent }   // swallow clicks
+            Behavior on color { ColorAnimation { duration: 120 } }
+
+            FaIcon {
+                anchors.centerIn: parent
+                icon: Icons.times
+                size: 14
+                iconColor: closeMouse.containsMouse ? Theme.textPrimary : Theme.textMuted
+            }
+
+            MouseArea {
+                id: closeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.close()
+            }
+        }
 
         Flickable {
+            id: flickable
             anchors.fill: parent
             anchors.margins: 24
+            contentWidth: width
             contentHeight: contentCol.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
             ColumnLayout {
                 id: contentCol
-                width: parent.width
+                width: flickable.width
                 spacing: 16
 
                 // Header
@@ -154,10 +204,7 @@ Rectangle {
                         Text { text: I18n.t("add_item_title"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
                         Text { text: I18n.t("add_item_subtitle"); color: Theme.textMuted; font.pixelSize: 11 }
                     }
-                    FaIcon {
-                        icon: Icons.times; size: 14; iconColor: Theme.textMuted
-                        MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
-                    }
+                    Item { width: 32; height: 1 }
                 }
 
                 // Article name
@@ -192,94 +239,296 @@ Rectangle {
                     }
                 }
 
-                // Category (optional)
+                // Job (replacing Category)
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
-                    Text { text: I18n.t("add_category_label"); color: Theme.textPrimary; font.pixelSize: 12; font.bold: true }
+
+                    Text {
+                        text: I18n.t("add_job_label")
+                        color: Theme.textPrimary
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+
                     Rectangle {
+                        id: jobSelectBox
                         Layout.fillWidth: true
                         height: 38
                         radius: Theme.radiusMd
                         color: Theme.surfaceElevated
-                        border.color: categoryInput.activeFocus ? Theme.primary : Theme.border
-                        TextInput {
-                            id: categoryInput
+                        border.color: jobMenu.visible ? Theme.primary : Theme.border
+                        border.width: 1
+
+                        RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12; anchors.rightMargin: 12
-                            verticalAlignment: TextInput.AlignVCenter
-                            color: Theme.textPrimary
-                            font.pixelSize: 13
-                            selectByMouse: true
-                            clip: true
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            spacing: 8
+                            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
+
+                            FaIcon {
+                                icon: {
+                                    if (root.selectedJob === "architect") return Icons.building;
+                                    if (root.selectedJob === "graphiste") return Icons.image;
+                                    return Icons.camera;
+                                }
+                                size: 12
+                                iconColor: Theme.primaryLight
+                            }
+
                             Text {
-                                anchors.fill: parent
-                                verticalAlignment: Text.AlignVCenter
-                                text: I18n.t("add_category_placeholder")
-                                color: Theme.textMuted
+                                text: root.getJobDisplay(root.selectedJob)
+                                color: Theme.textPrimary
                                 font.pixelSize: 13
-                                visible: !categoryInput.text
+                                font.bold: true
+                                Layout.fillWidth: true
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            FaIcon {
+                                icon: Icons.chevronDown
+                                size: 10
+                                iconColor: Theme.textMuted
                             }
                         }
-                    }
-                    // Quick pick from existing categories
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        visible: Bridge.categories && Bridge.categories.length > 0
-                        Repeater {
-                            model: Bridge.categories
-                            Rectangle {
-                                property string catName: modelData.name || modelData.title || ""
-                                height: 24
-                                width: chipText.implicitWidth + 18
-                                radius: 12
-                                color: categoryInput.text === catName ? Theme.primary : Theme.surfaceElevated
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: jobMenu.open()
+                        }
+
+                        Menu {
+                            id: jobMenu
+                            y: jobSelectBox.height + 4
+                            width: jobSelectBox.width
+
+                            background: Rectangle {
+                                color: Theme.surfaceElevated
                                 border.color: Theme.border
-                                Text {
-                                    id: chipText
-                                    anchors.centerIn: parent
-                                    text: parent.catName
-                                    color: categoryInput.text === parent.catName ? "white" : Theme.textMuted
-                                    font.pixelSize: 10
+                                radius: 8
+                            }
+
+                            delegate: MenuItem {
+                                id: mi
+                                background: Rectangle {
+                                    color: mi.highlighted ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : "transparent"
+                                    radius: 6
                                 }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: categoryInput.text = parent.catName
+                                contentItem: Text {
+                                    text: mi.text
+                                    color: mi.highlighted ? Theme.primaryLight : Theme.textPrimary
+                                    font.pixelSize: 13
+                                    font.bold: mi.font.bold
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: 10
+                                }
+                            }
+
+                            Repeater {
+                                model: root.jobOptions
+                                MenuItem {
+                                    text: root.getJobDisplay(modelData.id)
+                                    font.bold: root.selectedJob === modelData.id
+                                    onTriggered: {
+                                        root.selectedJob = modelData.id;
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // Subcategory (optional)
+                // Subcategory (choose from library or create another one)
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
-                    Text { text: I18n.t("add_subcategory_label"); color: Theme.textPrimary; font.pixelSize: 12; font.bold: true }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: I18n.t("add_subcategory_label")
+                            color: Theme.textPrimary
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: subcategoryInput.text.trim() !== "" && (Bridge.librarySubcategories || []).indexOf(subcategoryInput.text.trim()) === -1
+                                ? "+ " + I18n.tMsg(I18n.t("create_new_subcat"), subcategoryInput.text.trim())
+                                : ""
+                            color: Theme.success
+                            font.pixelSize: 11
+                            font.bold: true
+                            visible: text !== ""
+                        }
+                    }
+
+                    // Input Box with clear & dropdown toggle
                     Rectangle {
+                        id: subcatBox
                         Layout.fillWidth: true
                         height: 38
                         radius: Theme.radiusMd
                         color: Theme.surfaceElevated
-                        border.color: subcategoryInput.activeFocus ? Theme.primary : Theme.border
-                        TextInput {
-                            id: subcategoryInput
+                        border.color: subcategoryInput.activeFocus || subcatMenu.visible ? Theme.primary : Theme.border
+                        border.width: 1
+
+                        RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12; anchors.rightMargin: 12
-                            verticalAlignment: TextInput.AlignVCenter
-                            color: Theme.textPrimary
-                            font.pixelSize: 13
-                            selectByMouse: true
-                            clip: true
-                            Text {
-                                anchors.fill: parent
-                                verticalAlignment: Text.AlignVCenter
-                                text: I18n.t("add_subcategory_placeholder")
-                                color: Theme.textMuted
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 8
+                            spacing: 8
+
+                            TextInput {
+                                id: subcategoryInput
+                                Layout.fillWidth: true
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: Theme.textPrimary
                                 font.pixelSize: 13
-                                visible: !subcategoryInput.text
+                                selectByMouse: true
+                                clip: true
+
+                                Text {
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: I18n.t("add_subcategory_placeholder")
+                                    color: Theme.textMuted
+                                    font.pixelSize: 13
+                                    visible: !subcategoryInput.text
+                                }
+                            }
+
+                            // Clear text button (if text present)
+                            Rectangle {
+                                width: 22
+                                height: 22
+                                radius: 11
+                                color: clearSubMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+                                visible: subcategoryInput.text.length > 0
+
+                                FaIcon {
+                                    anchors.centerIn: parent
+                                    icon: Icons.times
+                                    size: 10
+                                    iconColor: Theme.textMuted
+                                }
+
+                                MouseArea {
+                                    id: clearSubMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: subcategoryInput.text = ""
+                                }
+                            }
+
+                            // Dropdown trigger button to choose from library
+                            Rectangle {
+                                id: subcatDropdownBtn
+                                width: 28
+                                height: 28
+                                radius: 6
+                                color: subcatBtnMouse.containsMouse || subcatMenu.visible ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : "transparent"
+
+                                FaIcon {
+                                    anchors.centerIn: parent
+                                    icon: Icons.chevronDown
+                                    size: 11
+                                    iconColor: subcatMenu.visible ? Theme.primaryLight : Theme.textMuted
+                                }
+
+                                MouseArea {
+                                    id: subcatBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (subcatMenu.visible) subcatMenu.close();
+                                        else subcatMenu.open();
+                                    }
+                                }
+                            }
+                        }
+
+                        // Dropdown menu showing existing subcategories from library
+                        Menu {
+                            id: subcatMenu
+                            y: subcatBox.height + 4
+                            width: subcatBox.width
+                            background: Rectangle {
+                                color: Theme.surfaceElevated
+                                border.color: Theme.border
+                                radius: 8
+                            }
+                            delegate: MenuItem {
+                                id: subItem
+                                background: Rectangle {
+                                    color: subItem.highlighted ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : "transparent"
+                                    radius: 6
+                                }
+                                contentItem: Text {
+                                    text: subItem.text
+                                    color: subItem.highlighted ? Theme.primaryLight : Theme.textPrimary
+                                    font.pixelSize: 12
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: 10
+                                }
+                            }
+
+                            MenuItem {
+                                text: (Bridge.librarySubcategories && Bridge.librarySubcategories.length > 0)
+                                    ? ("— " + I18n.t("choose_from_library") + " (" + Bridge.librarySubcategories.length + ") —")
+                                    : ("— " + I18n.t("no_library_subcats") + " —")
+                                enabled: false
+                            }
+
+                            Repeater {
+                                model: Bridge.librarySubcategories || []
+                                MenuItem {
+                                    text: modelData
+                                    font.bold: subcategoryInput.text === modelData
+                                    onTriggered: {
+                                        subcategoryInput.text = modelData;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick-pick Chips from Library
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: Bridge.librarySubcategories && Bridge.librarySubcategories.length > 0
+
+                        Repeater {
+                            model: Bridge.librarySubcategories || []
+                            Rectangle {
+                                property string subName: String(modelData)
+                                height: 24
+                                width: chipSubText.implicitWidth + 18
+                                radius: 12
+                                color: subcategoryInput.text === subName ? Theme.primary : Theme.surfaceElevated
+                                border.color: subcategoryInput.text === subName ? Theme.primaryLight : Theme.border
+
+                                Text {
+                                    id: chipSubText
+                                    anchors.centerIn: parent
+                                    text: parent.subName
+                                    color: subcategoryInput.text === parent.subName ? "white" : Theme.textMuted
+                                    font.pixelSize: 10
+                                    font.bold: subcategoryInput.text === parent.subName
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        subcategoryInput.text = parent.subName;
+                                    }
+                                }
                             }
                         }
                     }

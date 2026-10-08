@@ -16,34 +16,38 @@ class TestOlgaPlus(unittest.TestCase):
         self.assertIn("olga+", config.__doc__)
         self.assertIn("OlgaPlus", str(config.USER_CACHE_DIR))
 
-    def test_qml_sidebar_removed_and_settings_icon(self):
+    def test_qml_header_buttons_and_settings_removed(self):
         main_qml = (ROOT_DIR / "desktop" / "qml" / "main.qml").read_text(encoding="utf-8")
         header_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "HeaderBar.qml").read_text(encoding="utf-8")
-        settings_qml = (ROOT_DIR / "desktop" / "qml" / "views" / "SettingsView.qml").read_text(encoding="utf-8")
+        lib_qml = (ROOT_DIR / "desktop" / "qml" / "views" / "LibraryView.qml").read_text(encoding="utf-8")
+        license_dialog_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "LicenseDialog.qml").read_text(encoding="utf-8")
 
-        # SidebarNav must not be instantiated in main.qml
+        # SidebarNav and SettingsView must not be in main.qml
         self.assertNotIn("SidebarNav {", main_qml)
+        self.assertNotIn("SettingsView {", main_qml)
+        self.assertFalse((ROOT_DIR / "desktop" / "qml" / "views" / "SettingsView.qml").exists())
 
         # Title must be olga+
         self.assertIn('title: "olga+ • 3D Asset Platform"', main_qml)
 
-        # HeaderBar must have toggleSettings signal and cog icon button
-        self.assertIn("signal toggleSettings()", header_qml)
-        self.assertIn("signal backToLibrary()", header_qml)
-        self.assertIn("Icons.cog", header_qml)
+        # HeaderBar must have openLicense signal, license button, and language button
+        self.assertIn("signal openLicense()", header_qml)
+        self.assertIn("Icons.globe", header_qml)
+        self.assertIn("Icons.key", header_qml)
+        self.assertIn('I18n.currentLanguage === "fr" ? "English" : "Français"', header_qml)
 
-        # SettingsView must NOT contain license details widget (licenseCol / device fingerprint)
-        self.assertNotIn("id: licenseCol", settings_qml)
-        self.assertNotIn("field_device_id", settings_qml)
+        # Settings cog icon and toggleSettings must be removed
+        self.assertNotIn("Icons.cog", header_qml)
+        self.assertNotIn("signal toggleSettings()", header_qml)
 
-        # SettingsView must NOT contain client phone or address inputs
-        self.assertNotIn("id: phoneInput", settings_qml)
-        self.assertNotIn("id: addrInput", settings_qml)
+        # Category filter dropdown must be removed from LibraryView
+        self.assertNotIn("id: catMenu", lib_qml)
 
-        # SettingsView must NOT contain developer contact numbers pane (appInfoCol)
-        self.assertNotIn("id: appInfoCol", settings_qml)
-        self.assertNotIn("+213775189229", settings_qml)
-        self.assertNotIn("+213673782115", settings_qml)
+        # LicenseDialog must contain license key input, activation status, and contact phone numbers
+        self.assertIn("id: keyInput", license_dialog_qml)
+        self.assertIn("Bridge.activateLicense", license_dialog_qml)
+        self.assertIn("+213775189229", license_dialog_qml)
+        self.assertIn("+213673782115", license_dialog_qml)
 
     def test_i18n_strings(self):
         i18n_content = (ROOT_DIR / "desktop" / "qml" / "I18n.qml").read_text(encoding="utf-8")
@@ -135,9 +139,32 @@ class TestOlgaPlus(unittest.TestCase):
             self.assertEqual(scan["items"][0]["title"], "Nordic Armchair")
             self.assertEqual(scan["items"][0]["category"], "Furniture")
             self.assertEqual(scan["items"][0]["subcategory"], "Chairs")
+
+            # Verify get_subcategories discovers 'Chairs'
+            subcats = mgr.get_subcategories()
+            self.assertIn("Chairs", subcats)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_add_item_dialog_job_dropdown_and_subcategories(self):
+        add_dialog_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "AddItemDialog.qml").read_text(encoding="utf-8")
+        
+        # Verify category field is replaced with job dropdown
+        self.assertIn("selectedJob", add_dialog_qml)
+        self.assertIn("jobOptions", add_dialog_qml)
+        self.assertIn('"architect"', add_dialog_qml)
+        self.assertIn('"graphiste"', add_dialog_qml)
+        self.assertIn('"video maker"', add_dialog_qml)
+        self.assertIn("jobMenu", add_dialog_qml)
+        self.assertIn("jobSelectBox", add_dialog_qml)
+
+        # Verify subcategory allows choosing from library or creating another one
+        self.assertIn("Bridge.librarySubcategories", add_dialog_qml)
+        self.assertIn("subcatMenu", add_dialog_qml)
+        self.assertIn("subcatDropdownBtn", add_dialog_qml)
+        self.assertIn("create_new_subcat", add_dialog_qml)
 
 
 if __name__ == "__main__":
     unittest.main()
+

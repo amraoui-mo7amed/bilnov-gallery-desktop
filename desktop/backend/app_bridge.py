@@ -291,6 +291,20 @@ class AppBridge(QObject):
     def categoriesLoading(self) -> bool:
         return self._categories_loading
 
+    @Property("QVariant", notify=libraryItemsChanged)
+    def librarySubcategories(self) -> List[str]:
+        try:
+            return self.lib.get_subcategories()
+        except Exception:
+            return []
+
+    @Slot(str, result="QVariant")
+    def getSubcategories(self, category: str = "") -> List[str]:
+        try:
+            return self.lib.get_subcategories(category)
+        except Exception:
+            return []
+
     @Property(str, constant=True)
     def dataDir(self) -> str:
         return str(DATA_DIR)
@@ -299,8 +313,9 @@ class AppBridge(QObject):
     # Licensing Slots
     # =============================================================
 
+    @Slot(str)
     @Slot(str, str, str, str, str)
-    def activateLicense(self, key: str, name: str, email: str, phone: str, address: str = ""):
+    def activateLicense(self, key: str, name: str = "", email: str = "", phone: str = "", address: str = ""):
         """Invokes initial activation endpoint POST /api/v1/license/activate."""
         def _task():
             res = self.lic.activate_license(key, name, email, phone, address, lang=self.language)
@@ -318,7 +333,8 @@ class AppBridge(QObject):
             self.licenseChanged.emit()
             self.activationResult.emit(success, msg)
             if success:
-                self.toast.emit("success", f"Activation successful! Welcome, {name}.")
+                target_label = f"Welcome, {name}." if name else "Workstation activated."
+                self.toast.emit("success", f"Activation successful! {target_label}")
                 self.loadLibrary()
                 self.loadCategories()
                 QTimer.singleShot(1500, self._restart_application)

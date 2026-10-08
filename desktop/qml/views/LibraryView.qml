@@ -95,76 +95,6 @@ Item {
                 }
             }
 
-            // Category Filter Dropdown / Combo
-            Rectangle {
-                width: 160
-                height: 40
-                radius: Theme.radiusMd
-                color: Theme.surface
-                border.color: Theme.border
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 6
-                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
-
-                    FaIcon {
-                        icon: Icons.filter
-                        size: 11
-                        iconColor: Theme.primaryLight
-                    }
-
-                    Text {
-                        text: root.selectedCategory === "all" ? I18n.t("all_categories") : root.selectedCategory
-                        color: Theme.textPrimary
-                        font.pixelSize: 12
-                        font.bold: true
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                        horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
-                    }
-
-                    FaIcon {
-                        icon: Icons.chevronDown
-                        size: 9
-                        iconColor: Theme.textMuted
-                    }
-                }
-
-                MouseArea {
-                    id: catMenuMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: catMenu.open()
-                }
-
-                Menu {
-                    id: catMenu
-                    y: 44
-                    width: 180
-
-                    MenuItem {
-                        text: I18n.t("all_categories")
-                        onTriggered: {
-                            root.selectedCategory = "all";
-                            Bridge.loadLibrary(root.currentSearchQuery, "all");
-                        }
-                    }
-
-                    Repeater {
-                        model: Bridge.categories
-                        MenuItem {
-                            text: modelData.name || modelData.title
-                            onTriggered: {
-                                var cat = modelData.name || modelData.title;
-                                root.selectedCategory = cat;
-                                Bridge.loadLibrary(root.currentSearchQuery, cat);
-                            }
-                        }
-                    }
-                }
-            }
 
             // Stats info pill
             Rectangle {
@@ -279,49 +209,7 @@ Item {
             }
         }
 
-        // Active filter chip (if category selected)
-        RowLayout {
-            visible: root.selectedCategory !== "all"
-            Layout.fillWidth: true
-            spacing: 8
 
-            Rectangle {
-                height: 26
-                width: chipRow.implicitWidth + 16
-                radius: 13
-                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2)
-                border.color: Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.4)
-
-                RowLayout {
-                    id: chipRow
-                    anchors.centerIn: parent
-                    spacing: 6
-                    layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
-
-                    Text {
-                        text: I18n.t("category_prefix") + root.selectedCategory
-                        color: Theme.primaryLight
-                        font.pixelSize: 11
-                        font.bold: true
-                    }
-
-                    FaIcon {
-                        icon: Icons.times
-                        size: 9
-                        iconColor: Theme.primaryLight
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.selectedCategory = "all";
-                        Bridge.loadLibrary(root.currentSearchQuery, "all");
-                    }
-                }
-            }
-        }
 
         // Gallery Grid / States
         Item {
