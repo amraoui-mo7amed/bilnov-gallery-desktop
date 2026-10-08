@@ -92,16 +92,23 @@ class LibraryManager:
 
     def is_article_dir(self, p: Path) -> bool:
         """Determines if a directory contains model assets or preview images."""
-        if not p.is_dir() or p.name.startswith("."):
+        if not p.is_dir() or p.name.startswith(".") or p.name.lower() in ("model", "images"):
             return False
         # Check for model folder
         model_dir = p / "model"
         if model_dir.is_dir():
             return True
+        # Check for images folder
+        imgs_dir = p / "images"
+        if imgs_dir.is_dir():
+            return True
+        # Check for meta.json
+        if (p / "meta.json").exists():
+            return True
         # Check for images or 3D model files
         try:
             for item in p.iterdir():
-                if item.is_file():
+                if item.is_file() and not item.name.startswith("."):
                     ext = item.suffix.lower()
                     if ext in SUPPORTED_IMAGE_EXTS or ext in SUPPORTED_MODEL_EXTS:
                         return True
@@ -111,8 +118,13 @@ class LibraryManager:
 
     def scan_library(self, search: Optional[str] = None, category_filter: Optional[str] = None) -> Dict[str, Any]:
         """
-        Scans ./data for all articles, categories, and 3D models.
-        Supports depth 1, 2, or 3 hierarchy (e.g., data/Cat/Sub/Article, data/Cat/Article, data/Article).
+        Scans storage for all articles, categories, and 3D models.
+        Strictly enforces the 3-level hierarchy:
+            storage / <category> / <Subcategory> / <asset name>
+        Where each asset contains:
+            <images> (preview images)
+            model / <archive file> (model archive or files)
+        Depth 2 (storage / <category> / <asset name>) is explicitly NOT treated as an asset.
         """
         items: List[Dict[str, Any]] = []
         total_models = 0
@@ -135,24 +147,22 @@ class LibraryManager:
                 "categories": [],
             }
 
-        # Discover article directories inside ./data
-        visited_dirs: Set[Path] = set()
+        # Discover article directories strictly at depth 3:
+        # storage/<category>/<subcategory>/<asset_name>
         article_candidates: List[Path] = []
 
         try:
-            for root, dirs, files in os.walk(self.base_dir):
-                root_path = Path(root)
-                # Ignore hidden directories
-                dirs[:] = [d for d in dirs if not d.startswith(".")]
-
-                if root_path == self.base_dir:
+            for cat_dir in sorted(self.base_dir.iterdir()):
+                if not cat_dir.is_dir() or cat_dir.name.startswith(".") or self.is_article_dir(cat_dir):
                     continue
-
-                if self.is_article_dir(root_path):
-                    article_candidates.append(root_path)
-                    visited_dirs.add(root_path)
-                    # Don't descend into subfolders of an article dir (e.g. model/ or images/)
-                    dirs.clear()
+                for sub_dir in sorted(cat_dir.iterdir()):
+                    if not sub_dir.is_dir() or sub_dir.name.startswith(".") or self.is_article_dir(sub_dir):
+                        continue
+                    for asset_dir in sorted(sub_dir.iterdir()):
+                        if not asset_dir.is_dir() or asset_dir.name.startswith("."):
+                            continue
+                        if self.is_article_dir(asset_dir):
+                            article_candidates.append(asset_dir)
         except Exception as e:
             logger.error("Error walking data directory: %s", e)
 
@@ -162,19 +172,15 @@ class LibraryManager:
             except ValueError:
                 continue
 
+            if len(rel_parts) < 3:
+                continue
+
+            cat_name = rel_parts[0]
+            sub_name = rel_parts[1]
             article_title = article_dir.name
             meta = self.get_meta(article_dir)
-
-            # Derive category and subcategory from path or metadata
-            if len(rel_parts) >= 3:
-                cat_name = rel_parts[0]
-                sub_name = rel_parts[1]
-            elif len(rel_parts) == 2:
-                cat_name = rel_parts[0]
-                sub_name = meta.get("subcategory", "")
-            else:
-                cat_name = meta.get("category", "General")
-                sub_name = meta.get("subcategory", "")
+            if meta.get("title"):
+                article_title = meta.get("title")
 
             if cat_name:
                 categories_set.add(cat_name)
@@ -317,12 +323,13 @@ class LibraryManager:
         image_paths: List[str],
         model_paths: List[str],
         category: str = "",
+        subcategory: str = "",
     ) -> Dict[str, Any]:
         """
         Creates a new article in the library:
-          storage/<Category>/<Title>/image_1.ext (thumbnail), image_2.ext, ...
-          storage/<Category>/<Title>/model/<sketchup files>
-          storage/<Category>/<Title>/meta.json
+          storage/<Category>/<Subcategory>/<Title>/image_1.ext (thumbnail), image_2.ext, ...
+          storage/<Category>/<Subcategory>/<Title>/model/<sketchup files>
+          storage/<Category>/<Subcategory>/<Title>/meta.json
         The first image provided is always used as the thumbnail.
         """
         import shutil
@@ -342,11 +349,12 @@ class LibraryManager:
 
         def _safe(name: str) -> str:
             s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name).strip().strip(".")
-            return s or "Untitled"
+            return s or "General"
 
-        cat_name = _safe(category.strip()) if category and category.strip() else "My Models"
-        parent = self.base_dir / cat_name
-        folder_name = _safe(clean_title)
+        cat_name = _safe(category.strip()) if category and category.strip() else "General"
+        sub_name = _safe(subcategory.strip()) if subcategory and subcategory.strip() else "General"
+        parent = self.base_dir / cat_name / sub_name
+        folder_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", clean_title).strip().strip(".") or "Untitled"
         target = parent / folder_name
         counter = 1
         while target.exists():
@@ -372,6 +380,7 @@ class LibraryManager:
             self.save_meta(target, {
                 "title": clean_title,
                 "category": cat_name,
+                "subcategory": sub_name,
                 "thumbnail": f"image_1{imgs[0].suffix.lower()}",
                 "created_at": datetime.now().isoformat(),
                 "source": "user",

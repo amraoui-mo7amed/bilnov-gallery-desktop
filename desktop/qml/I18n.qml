@@ -33,11 +33,13 @@ Item {
     readonly property var translations: ({
         "en": {
             // App & Navigation
-            "app_title": "Bilnov Gallery",
+            "app_title": "olga+",
             "app_subtitle": "3D Asset Platform",
             "nav_gallery": "Library",
             "nav_categories": "Category",
-            "nav_settings": "Settings & Details",
+            "nav_settings": "Settings",
+            "back_to_library": "Back to Library",
+            "tooltip_settings": "Settings",
             "status_licensed": "Licensed",
             "status_trial": "Free Trial",
             "status_trial_expired": "Trial Expired",
@@ -49,12 +51,12 @@ Item {
             "trial_days_left": "days trial left",
 
             // Header Bar
-            "header_gallery_title": "3D Asset Gallery",
+            "header_gallery_title": "Library",
             "header_gallery_subtitle": "Browse models and assets in storage",
             "header_categories_title": "Categories & Taxonomy",
             "header_categories_subtitle": "Categories discovered from the folders in storage",
-            "header_settings_title": "Settings & Details",
-            "header_settings_subtitle": "Manage language, workstation license and trial status",
+            "header_settings_title": "Settings",
+            "header_settings_subtitle": "Manage language, license and trial status",
             "search_placeholder": "Search storage models...",
             "open_storage_btn": "Open Storage",
 
@@ -83,6 +85,8 @@ Item {
             "add_name_placeholder": "e.g. Modern Sofa",
             "add_category_label": "Category (optional)",
             "add_category_placeholder": "My Models",
+            "add_subcategory_label": "Subcategory (optional)",
+            "add_subcategory_placeholder": "e.g. Modern, Minimalist, Classic...",
             "add_images_label": "Images",
             "add_images_hint": "The first image is the thumbnail — click ★ to change",
             "add_images_btn": "Add Images",
@@ -101,8 +105,8 @@ Item {
             "asset_badge": "Asset",
 
             // Settings View
-            "settings_title": "Application Settings & Details",
-            "settings_subtitle": "Configure interface language, view license and customer details, and check trial status.",
+            "settings_title": "Application Settings",
+            "settings_subtitle": "Configure interface language, workstation license and trial status.",
             "section_language_title": "Language / Langue",
             "section_language_desc": "Select your preferred application display language (EN / FR only).",
             "lang_name_en": "English",
@@ -137,9 +141,9 @@ Item {
             "btn_copied": "Copied!",
 
             "activate_section_title": "Activate or Change License",
-            "activate_section_desc": "No key yet? Submit your details and we deliver the activation key to you by WhatsApp / phone. Already have a key? Use the section below.",
-            "section_details_title": "Your details",
-            "section_details_desc": "Required to request your license key — it is sent to you by WhatsApp / phone.",
+            "activate_section_desc": "Request an activation key or enter your license key below.",
+            "section_details_title": "Request a key",
+            "section_details_desc": "Enter your name and email to request your license key.",
             "section_have_key_title": "Already have a key?",
             "section_have_key_desc": "Enter your activation key to activate this workstation.",
             "activate_btn": "Activate Workstation",
@@ -151,14 +155,14 @@ Item {
             "seg_step1": "1 · Request Key",
             "seg_step2": "2 · Activate",
             "step1_title": "Step 1 — Request your license key",
-            "step1_desc": "Send your contact details. Your activation key will be delivered to you on this number by WhatsApp / phone.",
+            "step1_desc": "Send your contact details. Your activation key will be delivered to your email.",
             "step2_title": "Step 2 — Activate your workstation",
-            "step2_desc": "Enter the activation key you received by WhatsApp / phone.",
+            "step2_desc": "Enter the activation key you received.",
             "submit_details_btn": "Send Details & Request Key",
-            "whatsapp_delivery_note": "Your activation key will be sent to you on this phone number via WhatsApp.",
+            "whatsapp_delivery_note": "Your activation key will be sent to your email.",
             "link_have_key": "I already have my key →",
             "link_need_key": "← No key yet? Request one",
-            "activate_flow_hint": "No key yet? Submit your details in the activation window — the activation key is sent by WhatsApp / phone.",
+            "activate_flow_hint": "No key yet? Submit your details to request an activation key.",
 
             "section_backup_title": "Library Data & Asset Import",
             "section_backup_desc": "Export your library metadata backup, or import 3D models and archives into your local gallery.",
@@ -177,11 +181,11 @@ Item {
             "app_phone_value": "+213775189229",
 
             // Activation Dialog / Fields
-            "activation_title": "Bilnov Gallery Activation",
+            "activation_title": "olga+ Activation",
             "activation_subtitle": "License Management & Hardware Binding",
             "device_fingerprint": "DEVICE HARDWARE FINGERPRINT (SHA-256)",
             "license_key_label": "License Key *",
-            "license_key_placeholder": "BILNOV-XXXX-XXXX-XXXX",
+            "license_key_placeholder": "OLGA-XXXX-XXXX-XXXX",
             "customer_name_label": "Customer Full Name",
             "customer_name_placeholder": "e.g. Sarah Connor",
             "email_label": "Customer Email Address",
@@ -197,7 +201,7 @@ Item {
 
             // Lockout Barrier
             "lock_title": "Workstation Activation Required",
-            "lock_desc": "A valid Bilnov Gallery license is required to access local 3D assets.",
+            "lock_desc": "A valid olga+ license is required to access local 3D assets.",
             "btn_enter_key": "Enter License Key",
 
             // Toasts & Feedback
@@ -240,7 +244,7 @@ Item {
             "msg_trial_expired": "30-Day Free Trial has expired. Workstation license required.",
             "msg_license_expired": "License expired. Online renewal required.",
             "msg_offline_expired": "7-Day Offline Grace Period has expired. Please connect to internet to verify license.",
-            "msg_http_401": "Licensing server returned HTTP 401 (Unauthorized). Please contact support (+213775189229 / +213673782115).",
+            "msg_http_401": "Licensing server returned HTTP 401 (Unauthorized). Please contact support.",
             "msg_server_conn": "Server connection failed: {1}",
             "msg_provide_query": "Provide an email address, phone number or device ID",
             "msg_profile_registered": "Profile registered. Wait for an administrator to generate your license key.",
@@ -263,11 +267,13 @@ Item {
         },
         "fr": {
             // App & Navigation
-            "app_title": "Bilnov Gallery",
+            "app_title": "olga+",
             "app_subtitle": "Plateforme d'actifs 3D",
             "nav_gallery": "Bibliothèque",
             "nav_categories": "Catégorie",
-            "nav_settings": "Paramètres & Détails",
+            "nav_settings": "Paramètres",
+            "back_to_library": "Retour à la bibliothèque",
+            "tooltip_settings": "Paramètres",
             "status_licensed": "Sous licence",
             "status_trial": "Essai gratuit",
             "status_trial_expired": "Essai expiré",
@@ -279,11 +285,11 @@ Item {
             "trial_days_left": "jours d'essai restants",
 
             // Header Bar
-            "header_gallery_title": "Galerie d'actifs 3D",
+            "header_gallery_title": "Bibliothèque",
             "header_gallery_subtitle": "Parcourir les modèles et actifs du stockage",
             "header_categories_title": "Catégories & Taxonomie",
             "header_categories_subtitle": "Catégories découvertes à partir des dossiers du stockage",
-            "header_settings_title": "Paramètres & Détails",
+            "header_settings_title": "Paramètres",
             "header_settings_subtitle": "Gérer la langue, la licence et le statut d'essai",
             "search_placeholder": "Rechercher dans le stockage...",
             "open_storage_btn": "Ouvrir le stockage",
@@ -313,6 +319,8 @@ Item {
             "add_name_placeholder": "ex. Canapé moderne",
             "add_category_label": "Catégorie (facultatif)",
             "add_category_placeholder": "Mes modèles",
+            "add_subcategory_label": "Sous-catégorie (facultatif)",
+            "add_subcategory_placeholder": "ex. Moderne, Minimaliste, Classique...",
             "add_images_label": "Images",
             "add_images_hint": "La première image est la miniature — cliquez ★ pour changer",
             "add_images_btn": "Ajouter des images",
@@ -331,8 +339,8 @@ Item {
             "asset_badge": "Actif",
 
             // Settings View
-            "settings_title": "Paramètres & Détails de l'application",
-            "settings_subtitle": "Configurer la langue, afficher la licence et les détails client, et vérifier l'essai.",
+            "settings_title": "Paramètres de l'application",
+            "settings_subtitle": "Configurer la langue de l'interface, la licence et le statut d'essai.",
             "section_language_title": "Langue de l'interface",
             "section_language_desc": "Choisissez votre langue d'affichage préférée (EN / FR uniquement).",
             "lang_name_en": "English",
@@ -367,9 +375,9 @@ Item {
             "btn_copied": "Copié !",
 
             "activate_section_title": "Activer ou changer de licence",
-            "activate_section_desc": "Pas encore de clé ? Envoyez vos coordonnées et nous vous livrons la clé d'activation par WhatsApp / téléphone. Vous avez déjà une clé ? Utilisez la section ci-dessous.",
-            "section_details_title": "Vos coordonnées",
-            "section_details_desc": "Obligatoires pour demander votre clé de licence — elle vous est envoyée par WhatsApp / téléphone.",
+            "activate_section_desc": "Demandez une clé d'activation ou saisissez votre clé ci-dessous.",
+            "section_details_title": "Demander une clé",
+            "section_details_desc": "Saisissez votre nom et e-mail pour demander votre clé d'activation.",
             "section_have_key_title": "Vous avez déjà une clé ?",
             "section_have_key_desc": "Saisissez votre clé d'activation pour activer ce poste.",
             "activate_btn": "Activer le poste de travail",
@@ -381,14 +389,14 @@ Item {
             "seg_step1": "1 · Demander la clé",
             "seg_step2": "2 · Activer",
             "step1_title": "Étape 1 — Demandez votre clé de licence",
-            "step1_desc": "Envoyez vos coordonnées. Votre clé d'activation vous sera délivrée sur ce numéro par WhatsApp / téléphone.",
+            "step1_desc": "Envoyez vos coordonnées. Votre clé d'activation vous sera délivrée par e-mail.",
             "step2_title": "Étape 2 — Activez votre poste de travail",
-            "step2_desc": "Saisissez la clé d'activation reçue par WhatsApp / téléphone.",
+            "step2_desc": "Saisissez la clé d'activation reçue.",
             "submit_details_btn": "Envoyer mes coordonnées et demander la clé",
-            "whatsapp_delivery_note": "Votre clé d'activation vous sera envoyée sur ce numéro par WhatsApp.",
+            "whatsapp_delivery_note": "Votre clé d'activation vous sera envoyée par e-mail.",
             "link_have_key": "J'ai déjà ma clé →",
             "link_need_key": "← Pas encore de clé ? En demander une",
-            "activate_flow_hint": "Pas encore de clé ? Envoyez vos coordonnées dans la fenêtre d'activation — la clé est envoyée par WhatsApp / téléphone.",
+            "activate_flow_hint": "Pas encore de clé ? Envoyez vos coordonnées pour demander une clé d'activation.",
 
             "section_backup_title": "Gestion des données & Importation d'actifs",
             "section_backup_desc": "Exportez la sauvegarde de votre bibliothèque ou importez des modèles 3D et archives.",
@@ -407,11 +415,11 @@ Item {
             "app_phone_value": "+213775189229",
 
             // Activation Dialog / Fields
-            "activation_title": "Activation de Bilnov Gallery",
+            "activation_title": "Activation de olga+",
             "activation_subtitle": "Gestion de licence & Liaison matérielle",
             "device_fingerprint": "EMPREINTE MATÉRIELLE (SHA-256)",
             "license_key_label": "Clé de licence *",
-            "license_key_placeholder": "BILNOV-XXXX-XXXX-XXXX",
+            "license_key_placeholder": "OLGA-XXXX-XXXX-XXXX",
             "customer_name_label": "Nom complet du client",
             "customer_name_placeholder": "ex. Jean Dupont",
             "email_label": "Adresse e-mail du client",
@@ -427,7 +435,7 @@ Item {
 
             // Lockout Barrier
             "lock_title": "Activation du poste requise",
-            "lock_desc": "Une licence Bilnov Gallery valide est requise pour accéder aux actifs 3D locaux.",
+            "lock_desc": "Une licence olga+ valide est requise pour accéder aux actifs 3D locaux.",
             "btn_enter_key": "Entrer la clé de licence",
 
             // Toasts & Feedback
@@ -470,7 +478,7 @@ Item {
             "msg_trial_expired": "L'essai gratuit de 30 jours a expiré. Licence de poste requise.",
             "msg_license_expired": "Licence expirée. Renouvellement en ligne requis.",
             "msg_offline_expired": "La période de grâce hors-ligne de 7 jours a expiré. Connectez-vous à Internet pour vérifier la licence.",
-            "msg_http_401": "Le serveur de licence a renvoyé HTTP 401 (Non autorisé). Contactez le support (+213775189229 / +213673782115).",
+            "msg_http_401": "Le serveur de licence a renvoyé HTTP 401 (Non autorisé). Veuillez contacter le support.",
             "msg_server_conn": "Échec de la connexion au serveur : {1}",
             "msg_provide_query": "Fournissez une adresse e-mail, un numéro de téléphone ou un ID d'appareil",
             "msg_profile_registered": "Profil enregistré. Attendez qu'un administrateur génère votre clé de licence.",
@@ -518,6 +526,7 @@ Item {
         "30-Day Free Trial has expired. Workstation license required.": "msg_trial_expired",
         "License expired. Online renewal required.": "msg_license_expired",
         "7-Day Offline Grace Period has expired. Please connect to internet to verify license.": "msg_offline_expired",
+        "Licensing server returned HTTP 401 (Unauthorized). Please contact support.": "msg_http_401",
         "Licensing server returned HTTP 401 (Unauthorized). Please contact support (+213775189229 / +213673782115).": "msg_http_401",
         "Provide an email address, phone number or device ID": "msg_provide_query",
         "No customer profile or license found for this query": "msg_no_profile_found",

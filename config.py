@@ -1,5 +1,5 @@
 """
-Bilnov Gallery Configuration
+olga+ Configuration
 """
 
 import os
@@ -35,11 +35,11 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Separate user cache directory outside ./data to protect data folder
 if sys.platform == "darwin":
-    USER_CACHE_DIR = Path.home() / "Library" / "Caches" / "BilnovGallery"
+    USER_CACHE_DIR = Path.home() / "Library" / "Caches" / "OlgaPlus"
 elif sys.platform == "win32":
-    USER_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "BilnovGallery" / "Cache"
+    USER_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "OlgaPlus" / "Cache"
 else:
-    USER_CACHE_DIR = Path.home() / ".cache" / "bilnov_gallery"
+    USER_CACHE_DIR = Path.home() / ".cache" / "olga_plus"
 
 IMAGE_CACHE_DIR = USER_CACHE_DIR / "images"
 IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)

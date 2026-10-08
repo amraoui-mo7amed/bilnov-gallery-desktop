@@ -34,7 +34,7 @@ def main():
     # Register Windows Application User Model ID for proper taskbar grouping & icon display
     if sys.platform == "win32":
         import ctypes
-        myappid = "bilnov.gallery.desktop.app"
+        myappid = "olga.plus.desktop.app"
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
@@ -47,9 +47,9 @@ def main():
     QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 
     app = QApplication(sys.argv)
-    app.setOrganizationName("Bilnov")
-    app.setApplicationName("Bilnov Gallery")
-    app.setApplicationDisplayName("Bilnov Gallery Desktop")
+    app.setOrganizationName("OlgaPlus")
+    app.setApplicationName("olga+")
+    app.setApplicationDisplayName("olga+")
 
     # Set application icon (favicon, taskbar, and window icon)
     from PySide6.QtGui import QIcon
@@ -131,8 +131,9 @@ def main():
     app.aboutToQuit.connect(clean_shutdown)
 
     ret = app.exec()
-    del engine
-    sys.exit(ret)
+    from PySide6.QtCore import QThreadPool
+    QThreadPool.globalInstance().waitForDone(200)
+    os._exit(ret)
 
 
 if __name__ == "__main__":

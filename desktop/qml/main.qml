@@ -12,9 +12,10 @@ ApplicationWindow {
     height: 760
     minimumWidth: 980
     minimumHeight: 640
-    title: "Bilnov Gallery • 3D Asset Platform"
+    title: "olga+ • 3D Asset Platform"
     color: Theme.background
 
+    // 0: LibraryView, 1: SettingsView
     property int activeTab: 0
 
     // Font Awesome Loaders
@@ -35,92 +36,50 @@ ApplicationWindow {
         }
     }
 
-    RowLayout {
+    // Main Content Area (Sidebar removed: Library is default and only widget)
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        // Sidebar Navigation
-        SidebarNav {
-            id: sidebar
-            Layout.preferredWidth: 230
-            Layout.minimumWidth: 230
-            Layout.maximumWidth: 230
-            Layout.fillWidth: false
-            Layout.fillHeight: true
-            activeTab: window.activeTab
-            onTabSelected: function(index) {
-                window.activeTab = index
+        // Top Header Bar
+        HeaderBar {
+            id: header
+            Layout.preferredHeight: 60
+            Layout.minimumHeight: 60
+            Layout.fillWidth: true
+            Layout.fillHeight: false
+            isSettingsActive: window.activeTab === 1
+            title: window.activeTab === 1 ? I18n.t("header_settings_title") : I18n.t("header_gallery_title")
+            subtitle: window.activeTab === 1 ? I18n.t("header_settings_subtitle") : I18n.t("header_gallery_subtitle")
+            onSearchRequested: function(query) {
+                window.activeTab = 0
+                libraryView.setSearchQuery(query)
             }
-            onOpenLicenseDialog: {
-                window.activeTab = 2
+            onToggleSettings: {
+                window.activeTab = (window.activeTab === 1 ? 0 : 1)
+            }
+            onBackToLibrary: {
+                window.activeTab = 0
             }
         }
 
-        // Main Content Area
-        ColumnLayout {
+        // Views Stack
+        StackLayout {
+            id: viewsStack
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+            currentIndex: window.activeTab
 
-            // Top Header Bar
-            HeaderBar {
-                id: header
-                Layout.preferredHeight: 60
-                Layout.minimumHeight: 60
-                Layout.fillWidth: true
-                Layout.fillHeight: false
-                title: {
-                    switch (window.activeTab) {
-                        case 0: return I18n.t("header_gallery_title");
-                        case 1: return I18n.t("header_categories_title");
-                        case 2: return I18n.t("header_settings_title");
-                        default: return I18n.t("app_title");
-                    }
+            LibraryView {
+                id: libraryView
+                onOpenGallery: function(images, title) {
+                    lightbox.open(images, title, 0)
                 }
-                subtitle: {
-                    switch (window.activeTab) {
-                        case 0: return I18n.t("header_gallery_subtitle");
-                        case 1: return I18n.t("header_categories_subtitle");
-                        case 2: return I18n.t("header_settings_subtitle");
-                        default: return "";
-                    }
-                }
-                onSearchRequested: function(query) {
-                    window.activeTab = 0
-                    libraryView.setSearchQuery(query)
-                }
-                onOpenLicenseDialog: {
-                    window.activeTab = 2
-                }
+                onAddItemRequested: addItemDialog.open()
             }
 
-            // Views Stack
-            StackLayout {
-                id: viewsStack
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                currentIndex: window.activeTab
-
-                LibraryView {
-                    id: libraryView
-                    onOpenGallery: function(images, title) {
-                        lightbox.open(images, title, 0)
-                    }
-                    onAddItemRequested: addItemDialog.open()
-                }
-
-                CategoriesView {
-                    id: categoriesView
-                    onSelectCategory: function(catName) {
-                        window.activeTab = 0
-                        libraryView.selectedCategory = catName
-                        Bridge.loadLibrary(libraryView.currentSearchQuery, catName)
-                    }
-                }
-
-                SettingsView {
-                    id: settingsView
-                }
+            SettingsView {
+                id: settingsView
             }
         }
     }
@@ -131,7 +90,7 @@ ApplicationWindow {
         anchors.fill: parent
         z: 99990
         color: "#F0030712"
-        visible: !Bridge.isLicensed && window.activeTab !== 2
+        visible: !Bridge.isLicensed && window.activeTab !== 1
 
         ColumnLayout {
             anchors.centerIn: parent
@@ -139,8 +98,8 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
-                width: 64
-                height: 64
+                Layout.preferredWidth: 64
+                Layout.preferredHeight: 64
                 radius: 32
                 color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15)
                 border.color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.4)
@@ -174,7 +133,7 @@ ApplicationWindow {
                 Layout.minimumWidth: lockBtnRow.implicitWidth + 32
                 Layout.preferredWidth: lockBtnRow.implicitWidth + 32
                 Layout.maximumWidth: 210
-                height: 40
+                Layout.preferredHeight: 40
                 radius: 8
                 color: activateBtnMouse.containsMouse ? Theme.primaryHover : Theme.primary
 
@@ -201,7 +160,7 @@ ApplicationWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        window.activeTab = 2
+                        window.activeTab = 1
                     }
                 }
             }

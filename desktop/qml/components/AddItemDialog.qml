@@ -25,6 +25,7 @@ Rectangle {
         models = []
         nameInput.text = ""
         categoryInput.text = ""
+        subcategoryInput.text = ""
         errorMessage = ""
         isSubmitting = false
         opacity = 1
@@ -92,7 +93,7 @@ Rectangle {
         if (images.length === 0) { errorMessage = I18n.t("add_err_images"); return }
         if (models.length === 0) { errorMessage = I18n.t("add_err_models"); return }
         isSubmitting = true
-        Bridge.addLibraryItem(nameInput.text.trim(), images, models, categoryInput.text.trim())
+        Bridge.addLibraryItem(nameInput.text.trim(), images, models, categoryInput.text.trim(), subcategoryInput.text.trim())
     }
 
     Connections {
@@ -247,6 +248,38 @@ Rectangle {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: categoryInput.text = parent.catName
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // Subcategory (optional)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Text { text: I18n.t("add_subcategory_label"); color: Theme.textPrimary; font.pixelSize: 12; font.bold: true }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 38
+                        radius: Theme.radiusMd
+                        color: Theme.surfaceElevated
+                        border.color: subcategoryInput.activeFocus ? Theme.primary : Theme.border
+                        TextInput {
+                            id: subcategoryInput
+                            anchors.fill: parent
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: Theme.textPrimary
+                            font.pixelSize: 13
+                            selectByMouse: true
+                            clip: true
+                            Text {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: I18n.t("add_subcategory_placeholder")
+                                color: Theme.textMuted
+                                font.pixelSize: 13
+                                visible: !subcategoryInput.text
                             }
                         }
                     }

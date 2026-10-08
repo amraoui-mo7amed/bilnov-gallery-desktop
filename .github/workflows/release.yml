@@ -37,8 +37,8 @@ jobs:
         shell: pwsh
         run: |
           # Compress portable directory containing all DLLs and runtime files
-          Compress-Archive -Path dist/BilnovGallery-Portable -DestinationPath dist/BilnovGallery-Windows-Portable.zip -Force
-          # Note: dist/BilnovGallery.exe is the standalone single-file executable built by PyInstaller
+          Compress-Archive -Path dist/olga+-Portable -DestinationPath dist/olga+-Windows-Portable.zip -Force
+          # Note: dist/olga+.exe is the standalone single-file executable built by PyInstaller
           # with embedded python DLL, Qt runtime, and assets.
           Get-ChildItem dist
 
@@ -47,17 +47,17 @@ jobs:
         with:
           name: windows-binaries
           path: |
-            dist/BilnovGallery.exe
-            dist/BilnovGallery-Windows-Portable.zip
+            dist/olga+.exe
+            dist/olga+-Windows-Portable.zip
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: "Bilnov Gallery Desktop ${{ github.ref_name }}"
+          name: "olga+ Desktop ${{ github.ref_name }}"
           draft: false
           prerelease: false
           generate_release_notes: true
           files: |
-            dist/BilnovGallery.exe
-            dist/BilnovGallery-Windows-Portable.zip
+            dist/olga+.exe
+            dist/olga+-Windows-Portable.zip

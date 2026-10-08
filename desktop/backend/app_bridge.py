@@ -251,14 +251,18 @@ class AppBridge(QObject):
 
     @Property(str, notify=languageChanged)
     def language(self) -> str:
-        settings = QSettings("Bilnov", "BilnovGallery")
-        return str(settings.value("language", "en"))
+        settings = QSettings("OlgaPlus", "olga+")
+        val = settings.value("language", "")
+        if not val:
+            settings_old = QSettings("Bilnov", "BilnovGallery")
+            val = settings_old.value("language", "en")
+        return str(val or "en")
 
     @Slot(str)
     def saveLanguagePreference(self, lang: str):
         if lang in ["en", "fr"]:
-            settings = QSettings("Bilnov", "BilnovGallery")
-            current = str(settings.value("language", "en"))
+            settings = QSettings("OlgaPlus", "olga+")
+            current = str(settings.value("language", ""))
             if current != lang:
                 settings.setValue("language", lang)
                 self.languageChanged.emit()
@@ -568,13 +572,14 @@ class AppBridge(QObject):
         return QUrl.fromLocalFile(path).toString() if path else ""
 
     @Slot(str, "QVariantList", "QVariantList", str)
-    def addLibraryItem(self, title: str, images: list, models: list, category: str = ""):
+    @Slot(str, "QVariantList", "QVariantList", str, str)
+    def addLibraryItem(self, title: str, images: list, models: list, category: str = "", subcategory: str = ""):
         """Copies images (first = thumbnail) and model files into a new article folder in storage."""
         img_list = [str(p) for p in (images or [])]
         model_list = [str(p) for p in (models or [])]
 
         def _task():
-            return self.lib.add_item(title, img_list, model_list, category)
+            return self.lib.add_item(title, img_list, model_list, category, subcategory)
 
         def _on_success(res):
             self.itemAdded.emit(True, res.get("folder_path", ""))
@@ -659,7 +664,7 @@ class AppBridge(QObject):
 
             backup_payload = {
                 "schema_version": "1.1.0",
-                "app": "Bilnov Gallery Desktop",
+                "app": "olga+",
                 "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "preferences": {
                     "language": lang,

@@ -166,7 +166,7 @@ class LicenseManager:
         self.license_file = Path(license_file or LICENSE_FILE_PATH).expanduser()
         self.device_id = get_deterministic_device_id()
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "BilnovGalleryDesktop/1.0.0"})
+        self.session.headers.update({"User-Agent": "OlgaPlus/1.0.0"})
 
         self.current_state = LicenseState(device_id=self.device_id)
         self.trial_details: Dict[str, Any] = {}
@@ -451,12 +451,12 @@ class LicenseManager:
                 return False, "Full Name must be at least 2 characters"
             if len(cust_email) < 5 or "@" not in cust_email:
                 return False, "Valid email address is mandatory"
-            if len(cust_phone) < 6:
+            if cust_phone and len(cust_phone) < 6:
                 return False, "Contact phone number must be at least 6 digits"
             payload["customer"] = {
                 "name": cust_name,
                 "email": cust_email,
-                "phone": cust_phone,
+                "phone": cust_phone or "+0000000000",
                 "address": address.strip(),
             }
 
@@ -502,7 +502,7 @@ class LicenseManager:
         elif resp.status_code == 401:
             msg = (
                 "Licensing server returned HTTP 401 (Unauthorized). "
-                "Please contact support (+213775189229 / +213673782115)."
+                "Please contact support."
             )
             logger.warning(msg)
             return False, msg
@@ -796,13 +796,13 @@ class LicenseManager:
             return False, "Full Name must be at least 2 characters"
         if len(cust_email) < 5 or "@" not in cust_email:
             return False, "Valid email address is mandatory"
-        if len(cust_phone) < 6:
+        if cust_phone and len(cust_phone) < 6:
             return False, "Contact phone number must be at least 6 digits"
 
         payload: Dict[str, Any] = {
             "name": cust_name,
             "email": cust_email,
-            "phone": cust_phone,
+            "phone": cust_phone or "+0000000000",
             "address": address.strip(),
             "device_id": self.device_id,
             "lang": lang,

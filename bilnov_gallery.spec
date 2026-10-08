@@ -54,7 +54,7 @@ icon_icns = str(ROOT_DIR / 'desktop' / 'assets' / 'icon.icns')
 
 if sys.platform == 'win32':
     # 1. Standalone Single-File Executable
-    # Contains Python DLL, PySide6 DLLs, and QML data embedded directly inside BilnovGallery.exe
+    # Contains Python DLL, PySide6 DLLs, and QML data embedded directly inside olga+.exe
     exe_standalone = EXE(
         pyz,
         a.scripts,
@@ -62,7 +62,7 @@ if sys.platform == 'win32':
         a.zipfiles,
         a.datas,
         [],
-        name='BilnovGallery',
+        name='olga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -78,13 +78,13 @@ if sys.platform == 'win32':
         icon=icon_ico,
     )
 
-    # 2. Portable Directory Distribution (All DLLs alongside BilnovGallery.exe)
+    # 2. Portable Directory Distribution (All DLLs alongside olga+.exe)
     exe_dir = EXE(
         pyz,
         a.scripts,
         [],
         exclude_binaries=True,
-        name='BilnovGallery',
+        name='olga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -106,7 +106,7 @@ if sys.platform == 'win32':
         strip=False,
         upx=False,
         upx_exclude=[],
-        name='BilnovGallery-Portable',
+        name='olga+-Portable',
     )
 
 elif sys.platform == 'darwin':
@@ -115,7 +115,7 @@ elif sys.platform == 'darwin':
         a.scripts,
         [],
         exclude_binaries=True,
-        name='BilnovGallery',
+        name='olga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -137,17 +137,19 @@ elif sys.platform == 'darwin':
         strip=False,
         upx=False,
         upx_exclude=[],
-        name='BilnovGallery',
+        name='olga+',
     )
 
     app = BUNDLE(
         coll,
-        name='BilnovGallery.app',
+        name='olga+.app',
         icon=icon_icns,
-        bundle_identifier='com.bilnov.gallery',
+        bundle_identifier='com.olgaplus.app',
         info_plist={
-            'CFBundleShortVersionString': '1.4.4',
-            'CFBundleVersion': '1.4.4',
+            'CFBundleName': 'olga+',
+            'CFBundleDisplayName': 'olga+',
+            'CFBundleShortVersionString': '1.0.0',
+            'CFBundleVersion': '1.0.0',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },
@@ -160,7 +162,7 @@ else:
         a.zipfiles,
         a.datas,
         [],
-        name='BilnovGallery',
+        name='olga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

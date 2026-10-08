@@ -337,862 +337,384 @@ Flickable {
         }
 
         // ---------------------------------------------------------
-        // Card 3: Workstation License & Customer Details
+        // Card 3: Activate or Change License
         // ---------------------------------------------------------
-        GridLayout {
-        Layout.fillWidth: true
-        columns: contentCol.width >= 720 ? 2 : 1
-        columnSpacing: 16
-        rowSpacing: 16
-
-        // Left: Workstation License & Customer Details
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredWidth: 1
-            Layout.minimumWidth: 0
-            Layout.fillHeight: true
-            Layout.alignment: Qt.AlignTop
-            clip: true
-            radius: Theme.radiusMd
-            color: Theme.surface
-            border.color: Theme.border
-            border.width: 1
-            implicitHeight: licenseCol.implicitHeight + 32
-
-            ColumnLayout {
-                id: licenseCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 16
-                spacing: 16
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-                    FaIcon {
-                        icon: Icons.shield
-                        size: 15
-                        iconColor: Theme.primaryLight
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            text: I18n.t("section_license_details_title")
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: Theme.textPrimary
-                            font.pixelSize: 14
-                            font.bold: true
-                        }
-                        Text {
-                            text: I18n.t("section_license_details_desc")
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: Theme.textMuted
-                            font.pixelSize: 11
-                        }
-                    }
-                }
-
-                // Grid of Details
-                GridLayout {
-                    columns: 2
-                    columnSpacing: 20
-                    rowSpacing: 12
-                    Layout.fillWidth: true
-
-                    // Hardware Device ID
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.columnSpan: 2
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_device_id")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 34
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: Theme.border
-                                Text {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: Bridge.deviceId
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 11
-                                    font.family: "Monospace"
-                                    elide: Text.ElideMiddle
-                                }
-                            }
-                            Rectangle {
-                                Layout.minimumWidth: copyDevLbl.implicitWidth + 28
-                                Layout.preferredWidth: copyDevLbl.implicitWidth + 28
-                                Layout.maximumWidth: 210
-                                height: 34
-                                radius: 6
-                                color: copyDevMouse.containsMouse ? Theme.primaryHover : Theme.primary
-                                Text {
-                                    id: copyDevLbl
-                                    anchors.centerIn: parent
-                                    text: I18n.t("btn_copy")
-                                    color: "white"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                                MouseArea {
-                                    id: copyDevMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Bridge.copyToClipboard(Bridge.deviceId)
-                                }
-                            }
-                        }
-                    }
-
-                    // License Status
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_license_status")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        Rectangle {
-                            height: 32
-                            width: 140
-                            radius: 6
-                            color: {
-                                if (Bridge.licenseStatusCode === "ACTIVE") return Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.2);
-                                if (Bridge.licenseStatusCode === "TRIAL") return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2);
-                                return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2);
-                            }
-                            border.color: {
-                                if (Bridge.licenseStatusCode === "ACTIVE") return Theme.success;
-                                if (Bridge.licenseStatusCode === "TRIAL") return Theme.primaryLight;
-                                return Theme.error;
-                            }
-                            Text {
-                                anchors.centerIn: parent
-                                text: {
-                                    var s = Bridge.licenseStatusCode;
-                                    if (Bridge.isLicensed && s === "TRIAL") return I18n.t("status_trial");
-                                    if (Bridge.isLicensed && s === "ACTIVE_OFFLINE") return I18n.t("status_offline");
-                                    if (Bridge.isLicensed) return I18n.t("status_licensed");
-                                    if (s === "TRIAL_EXPIRED") return I18n.t("status_trial_expired");
-                                    if (s === "EXPIRED" || s === "OFFLINE_EXPIRED") return I18n.t("status_code_expired");
-                                    return I18n.t("status_activation_required");
-                                }
-                                color: {
-                                    var s = Bridge.licenseStatusCode;
-                                    if (Bridge.isLicensed) return s === "TRIAL" ? Theme.primaryLight : Theme.success;
-                                    if (s === "TRIAL_EXPIRED" || s === "EXPIRED" || s === "OFFLINE_EXPIRED") return Theme.error;
-                                    return Theme.error;
-                                }
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-                    }
-
-                    // License Expiration
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_expires_at")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        Text {
-                            text: Bridge.licenseExpiresAt || "Perpetual"
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                            font.bold: true
-                        }
-                    }
-
-                    // Customer Name
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_customer_name")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        Text {
-                            text: Bridge.customerName || "—"
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                        }
-                    }
-
-                    // Customer Email
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_customer_email")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        Text {
-                            text: Bridge.customerEmail || "—"
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                        }
-                    }
-
-                    // Customer Phone
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_customer_phone")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        Text {
-                            text: Bridge.customerPhone || "—"
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                        }
-                    }
-
-                    // Active License Key
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            text: I18n.t("field_license_key")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                        Text {
-                            text: Bridge.licenseKey ? (Bridge.licenseKey.slice(0, 10) + "••••••••••••") : "—"
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                            font.family: "Monospace"
-                        }
-                    }
-                }
-
-            }
-        }
-
-        // Right: Activate or Change License
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredWidth: 1
-            Layout.minimumWidth: 0
-            Layout.fillHeight: true
-            Layout.alignment: Qt.AlignTop
-            clip: true
             radius: Theme.radiusMd
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
             implicitHeight: activateCol.implicitHeight + 32
 
-                ColumnLayout {
-                    id: activateCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 16
-                    spacing: 10
+            ColumnLayout {
+                id: activateCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 16
+                spacing: 12
 
-                    Text {
-                        text: I18n.t("activate_section_title")
-                        color: Theme.textPrimary
-                        font.pixelSize: 13
-                        font.bold: true
+                RowLayout {
+                    spacing: 10
+                    FaIcon {
+                        icon: Icons.key
+                        size: 15
+                        iconColor: Theme.primaryLight
                     }
-                    Text {
-                        text: I18n.t("activate_section_desc")
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                        color: Theme.textMuted
-                        font.pixelSize: 11
+                    ColumnLayout {
+                        spacing: 2
+                        Text {
+                            text: I18n.t("activate_section_title")
+                            color: Theme.textPrimary
+                            font.pixelSize: 14
+                            font.bold: true
+                        }
+                        Text {
+                            text: I18n.t("activate_section_desc")
+                            color: Theme.textMuted
+                            font.pixelSize: 11
+                        }
                     }
+                }
+
+                // Section: Request a key
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Layout.topMargin: 4
 
                     Text {
                         text: I18n.t("section_details_title")
                         color: Theme.textSecondary
-                        font.pixelSize: 11
+                        font.pixelSize: 12
                         font.bold: true
-                        Layout.topMargin: 6
                     }
                     Text {
                         text: I18n.t("section_details_desc")
                         color: Theme.textMuted
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-
-                    GridLayout {
-                        columns: 2
-                        columnSpacing: 14
-                        rowSpacing: 10
-                        Layout.fillWidth: true
-
-                        // Full Name Input
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Text {
-                                text: I18n.t("customer_name_label")
-                                color: Theme.textSecondary
-                                font.pixelSize: 11
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 36
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: nameInput.activeFocus ? Theme.primary : Theme.border
-                                TextInput {
-                                    id: nameInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 12
-                                    selectByMouse: true
-                                    Text {
-                                        text: I18n.t("customer_name_placeholder")
-                                        color: Theme.textMuted
-                                        font.pixelSize: 12
-                                        visible: !nameInput.text && !nameInput.activeFocus
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
-
-                        // Email Input
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Text {
-                                text: I18n.t("email_label")
-                                color: Theme.textSecondary
-                                font.pixelSize: 11
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 36
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: emailInput.activeFocus ? Theme.primary : Theme.border
-                                TextInput {
-                                    id: emailInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 12
-                                    selectByMouse: true
-                                    Text {
-                                        text: I18n.t("email_placeholder")
-                                        color: Theme.textMuted
-                                        font.pixelSize: 12
-                                        visible: !emailInput.text && !emailInput.activeFocus
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
-
-                        // Phone Input
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Text {
-                                text: I18n.t("phone_label")
-                                color: Theme.textSecondary
-                                font.pixelSize: 11
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 36
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: phoneInput.activeFocus ? Theme.primary : Theme.border
-                                TextInput {
-                                    id: phoneInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 12
-                                    selectByMouse: true
-                                    Text {
-                                        text: I18n.t("phone_placeholder")
-                                        color: Theme.textMuted
-                                        font.pixelSize: 12
-                                        visible: !phoneInput.text && !phoneInput.activeFocus
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
-
-                        // Address Input
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Text {
-                                text: I18n.t("address_label")
-                                color: Theme.textSecondary
-                                font.pixelSize: 11
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 36
-                                radius: 6
-                                color: Theme.surfaceElevated
-                                border.color: addrInput.activeFocus ? Theme.primary : Theme.border
-                                TextInput {
-                                    id: addrInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    verticalAlignment: Text.AlignVCenter
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 12
-                                    selectByMouse: true
-                                    Text {
-                                        text: I18n.t("address_placeholder")
-                                        color: Theme.textMuted
-                                        font.pixelSize: 12
-                                        visible: !addrInput.text && !addrInput.activeFocus
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Request Key / Check Status
-                    RowLayout {
-                        Layout.topMargin: 6
-                        spacing: 8
-
-                        Rectangle {
-                            Layout.minimumWidth: registerBtnRow.implicitWidth + 32
-                            Layout.preferredWidth: registerBtnRow.implicitWidth + 32
-                            Layout.maximumWidth: 210
-                            height: 40
-                            radius: 8
-                            color: registerMouse.containsMouse ? Theme.primaryHover : Theme.primary
-
-                            RowLayout {
-                                id: registerBtnRow
-                                anchors.centerIn: parent
-                                spacing: 8
-                                FaIcon {
-                                    icon: Icons.plus
-                                    size: 12
-                                    iconColor: "white"
-                                }
-                                Text {
-                                    text: I18n.t("register_btn")
-                                    color: "white"
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                }
-                            }
-
-                            MouseArea {
-                                id: registerMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    var name = nameInput.text.trim();
-                                    var email = emailInput.text.trim();
-                                    var phone = phoneInput.text.trim();
-                                    var addr = addrInput.text.trim();
-
-                                    if (name.length < 2) {
-                                        Bridge.toast("error", I18n.t("val_name_err"));
-                                        return;
-                                    }
-                                    if (email.length < 5 || email.indexOf("@") === -1) {
-                                        Bridge.toast("error", I18n.t("val_email_err"));
-                                        return;
-                                    }
-                                    if (phone.length < 6 || phone.indexOf("+213") !== 0) {
-                                        Bridge.toast("error", I18n.t("val_phone_err"));
-                                        return;
-                                    }
-
-                                    root.clientStatusText = "";
-                                    Bridge.registerClientProfile(name, email, phone, addr);
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            Layout.minimumWidth: statusBtnRow.implicitWidth + 32
-                            Layout.preferredWidth: statusBtnRow.implicitWidth + 32
-                            Layout.maximumWidth: 210
-                            height: 40
-                            radius: 8
-                            color: statusMouse.containsMouse ? Theme.surfaceElevated : Theme.surface
-                            border.color: Theme.border
-
-                            RowLayout {
-                                id: statusBtnRow
-                                anchors.centerIn: parent
-                                spacing: 8
-                                FaIcon {
-                                    icon: Icons.sync
-                                    size: 12
-                                    iconColor: Theme.textMuted
-                                }
-                                Text {
-                                    text: I18n.t("check_status_btn")
-                                    color: Theme.textPrimary
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                }
-                            }
-
-                            MouseArea {
-                                id: statusMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    var query = emailInput.text.trim() || phoneInput.text.trim() || Bridge.deviceId;
-                                    root.clientStatusText = "";
-                                    Bridge.checkClientStatus(query);
-                                }
-                            }
-                        }
-                    }
-
-                    // -------------------------------------------------
-                    // Already have a key: key input + Activate button
-                    // -------------------------------------------------
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: haveKeyCol.implicitHeight + 28
-                        radius: 8
-                        color: Theme.surfaceElevated
-                        border.color: Theme.border
-
-                        ColumnLayout {
-                            id: haveKeyCol
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 14
-                            spacing: 8
-
-                            Text {
-                                text: I18n.t("section_have_key_title")
-                                color: Theme.textPrimary
-                                font.pixelSize: 12
-                                font.bold: true
-                            }
-                            Text {
-                                text: I18n.t("section_have_key_desc")
-                                color: Theme.textMuted
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-
-                            // License Key Input
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 4
-                                Text {
-                                    text: I18n.t("license_key_label")
-                                    color: Theme.textSecondary
-                                    font.pixelSize: 11
-                                }
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 36
-                                    radius: 6
-                                    color: Theme.surface
-                                    border.color: licKeyInput.activeFocus ? Theme.primary : Theme.border
-                                    TextInput {
-                                        id: licKeyInput
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 10
-                                        anchors.rightMargin: 10
-                                        verticalAlignment: Text.AlignVCenter
-                                        color: Theme.textPrimary
-                                        font.pixelSize: 12
-                                        font.family: "Monospace"
-                                        selectByMouse: true
-                                        Text {
-                                            text: I18n.t("license_key_placeholder")
-                                            color: Theme.textMuted
-                                            font.pixelSize: 12
-                                            font.family: "Monospace"
-                                            visible: !licKeyInput.text && !licKeyInput.activeFocus
-                                            anchors.fill: parent
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Activate Workstation
-                            RowLayout {
-                                Layout.topMargin: 6
-                                spacing: 8
-
-                                Rectangle {
-                                    Layout.minimumWidth: activateBtnRow.implicitWidth + 32
-                                    Layout.preferredWidth: activateBtnRow.implicitWidth + 32
-                                    Layout.maximumWidth: 210
-                                    height: 40
-                                    radius: 8
-                                    color: activateMouse.containsMouse ? Theme.primaryHover : Theme.primary
-
-                                    RowLayout {
-                                        id: activateBtnRow
-                                        anchors.centerIn: parent
-                                        spacing: 8
-                                        FaIcon {
-                                            icon: Icons.key
-                                            size: 12
-                                            iconColor: "white"
-                                        }
-                                        Text {
-                                            text: I18n.t("activate_btn")
-                                            color: "white"
-                                            font.pixelSize: 12
-                                            font.bold: true
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: activateMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            var key = licKeyInput.text.trim();
-                                            var name = nameInput.text.trim();
-                                            var email = emailInput.text.trim();
-                                            var phone = phoneInput.text.trim();
-                                            var addr = addrInput.text.trim();
-
-                                            if (key.length < 10) {
-                                                Bridge.toast("error", I18n.t("val_key_err"));
-                                                return;
-                                            }
-                                            // Customer details are optional (openapi.json); when any is
-                                            // provided, CustomerDetailsSchema requires all three.
-                                            if (name.length > 0 || email.length > 0 || phone.length > 0) {
-                                                if (name.length < 2) {
-                                                    Bridge.toast("error", I18n.t("val_name_err"));
-                                                    return;
-                                                }
-                                                if (email.length < 5 || email.indexOf("@") === -1) {
-                                                    Bridge.toast("error", I18n.t("val_email_err"));
-                                                    return;
-                                                }
-                                                if (phone.length < 6 || phone.indexOf("+213") !== 0) {
-                                                    Bridge.toast("error", I18n.t("val_phone_err"));
-                                                    return;
-                                                }
-                                            }
-
-                                            Bridge.activateLicense(key, name, email, phone, addr);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Text {
-                        visible: root.clientStatusText.length > 0
-                        text: root.clientStatusText
-                        color: Theme.textMuted
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
                 }
-            }
-        }
 
-        // ---------------------------------------------------------
-        // Card 5: Application Details (Bilnov, contact numbers, Correct Version)
-        // ---------------------------------------------------------
-        Rectangle {
-            Layout.fillWidth: true
-            radius: Theme.radiusMd
-            color: Theme.surface
-            border.color: Theme.border
-            border.width: 1
-            implicitHeight: appInfoCol.implicitHeight + 28
-
-            ColumnLayout {
-                id: appInfoCol
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
-
-                Text {
-                    text: I18n.t("section_app_info_title")
-                    color: Theme.textPrimary
-                    font.pixelSize: 13
-                    font.bold: true
-                }
-
-                RowLayout {
-                    spacing: 36
+                // Full Name & Email Inputs Grid
+                GridLayout {
+                    columns: contentCol.width >= 600 ? 2 : 1
+                    columnSpacing: 14
+                    rowSpacing: 10
                     Layout.fillWidth: true
 
-                    // Application Name
+                    // Full Name Input
                     ColumnLayout {
-                        spacing: 2
+                        Layout.fillWidth: true
+                        spacing: 4
                         Text {
-                            text: I18n.t("app_name_label")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
+                            text: I18n.t("customer_name_label")
+                            color: Theme.textSecondary
+                            font.pixelSize: 11
                         }
-                        Text {
-                            text: "Bilnov Gallery Desktop"
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                            font.bold: true
-                        }
-                    }
-
-                    // Version
-                    ColumnLayout {
-                        spacing: 2
-                        Text {
-                            text: I18n.t("app_version_label")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                        }
-                        Text {
-                            text: Bridge.appVersion || "v1.4.4"
-                            color: Theme.primaryLight
-                            font.pixelSize: 12
-                            font.bold: true
-                        }
-                    }
-
-                    // Developed by
-                    ColumnLayout {
-                        spacing: 2
-                        Text {
-                            text: I18n.t("app_developer_label")
-                            color: Theme.textMuted
-                            font.pixelSize: 10
-                        }
-                        RowLayout {
-                            spacing: 6
-                            Rectangle {
-                                width: 18
-                                height: 18
-                                radius: 4
-                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 36
+                            radius: 6
+                            color: Theme.surfaceElevated
+                            border.color: nameInput.activeFocus ? Theme.primary : Theme.border
+                            TextInput {
+                                id: nameInput
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                verticalAlignment: Text.AlignVCenter
+                                color: Theme.textPrimary
+                                font.pixelSize: 12
+                                selectByMouse: true
                                 Text {
-                                    anchors.centerIn: parent
-                                    text: "B"
-                                    color: Theme.primaryLight
-                                    font.pixelSize: 11
-                                    font.bold: true
+                                    text: I18n.t("customer_name_placeholder")
+                                    color: Theme.textMuted
+                                    font.pixelSize: 12
+                                    visible: !nameInput.text && !nameInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                             }
+                        }
+                    }
+
+                    // Email Input
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Text {
+                            text: I18n.t("email_label")
+                            color: Theme.textSecondary
+                            font.pixelSize: 11
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 36
+                            radius: 6
+                            color: Theme.surfaceElevated
+                            border.color: emailInput.activeFocus ? Theme.primary : Theme.border
+                            TextInput {
+                                id: emailInput
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                verticalAlignment: Text.AlignVCenter
+                                color: Theme.textPrimary
+                                font.pixelSize: 12
+                                selectByMouse: true
+                                Text {
+                                    text: I18n.t("email_placeholder")
+                                    color: Theme.textMuted
+                                    font.pixelSize: 12
+                                    visible: !emailInput.text && !emailInput.activeFocus
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Request Key / Check Status Buttons
+                RowLayout {
+                    Layout.topMargin: 4
+                    spacing: 8
+
+                    Rectangle {
+                        Layout.minimumWidth: registerBtnRow.implicitWidth + 32
+                        Layout.preferredWidth: registerBtnRow.implicitWidth + 32
+                        Layout.maximumWidth: 210
+                        height: 40
+                        radius: 8
+                        color: registerMouse.containsMouse ? Theme.primaryHover : Theme.primary
+
+                        RowLayout {
+                            id: registerBtnRow
+                            anchors.centerIn: parent
+                            spacing: 8
+                            FaIcon {
+                                icon: Icons.plus
+                                size: 12
+                                iconColor: "white"
+                            }
                             Text {
-                                text: "Bilnov"
+                                text: I18n.t("register_btn")
+                                color: "white"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                        }
+
+                        MouseArea {
+                            id: registerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                var name = nameInput.text.trim();
+                                var email = emailInput.text.trim();
+
+                                if (name.length < 2) {
+                                    Bridge.toast("error", I18n.t("val_name_err"));
+                                    return;
+                                }
+                                if (email.length < 5 || email.indexOf("@") === -1) {
+                                    Bridge.toast("error", I18n.t("val_email_err"));
+                                    return;
+                                }
+
+                                root.clientStatusText = "";
+                                Bridge.registerClientProfile(name, email, "", "");
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.minimumWidth: statusBtnRow.implicitWidth + 32
+                        Layout.preferredWidth: statusBtnRow.implicitWidth + 32
+                        Layout.maximumWidth: 210
+                        height: 40
+                        radius: 8
+                        color: statusMouse.containsMouse ? Theme.surfaceElevated : Theme.surface
+                        border.color: Theme.border
+
+                        RowLayout {
+                            id: statusBtnRow
+                            anchors.centerIn: parent
+                            spacing: 8
+                            FaIcon {
+                                icon: Icons.sync
+                                size: 12
+                                iconColor: Theme.textMuted
+                            }
+                            Text {
+                                text: I18n.t("check_status_btn")
                                 color: Theme.textPrimary
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
-                    }
 
-                    // Contact Phone Numbers (both numbers on a single row)
+                        MouseArea {
+                            id: statusMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                var query = emailInput.text.trim() || Bridge.deviceId;
+                                root.clientStatusText = "";
+                                Bridge.checkClientStatus(query);
+                            }
+                        }
+                    }
+                }
+
+                // -------------------------------------------------
+                // Already have a key: key input + Activate button
+                // -------------------------------------------------
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: haveKeyCol.implicitHeight + 28
+                    radius: 8
+                    color: Theme.surfaceElevated
+                    border.color: Theme.border
+                    Layout.topMargin: 8
+
                     ColumnLayout {
-                        spacing: 4
+                        id: haveKeyCol
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 14
+                        spacing: 8
+
                         Text {
-                            text: I18n.t("app_phone_label")
+                            text: I18n.t("section_have_key_title")
+                            color: Theme.textPrimary
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+                        Text {
+                            text: I18n.t("section_have_key_desc")
                             color: Theme.textMuted
                             font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
                         }
-                        RowLayout {
-                            spacing: 16
-                            Repeater {
-                                model: ["+213775189229", "+213673782115"]
-                                RowLayout {
-                                    spacing: 8
+
+                        // License Key Input
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text {
+                                text: I18n.t("license_key_label")
+                                color: Theme.textSecondary
+                                font.pixelSize: 11
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 36
+                                radius: 6
+                                color: Theme.surface
+                                border.color: licKeyInput.activeFocus ? Theme.primary : Theme.border
+                                TextInput {
+                                    id: licKeyInput
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: Theme.textPrimary
+                                    font.pixelSize: 12
+                                    font.family: "Monospace"
+                                    selectByMouse: true
                                     Text {
-                                        text: modelData
-                                        color: Theme.primaryLight
+                                        text: I18n.t("license_key_placeholder")
+                                        color: Theme.textMuted
                                         font.pixelSize: 12
                                         font.family: "Monospace"
+                                        visible: !licKeyInput.text && !licKeyInput.activeFocus
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+                        }
+
+                        // Activate Workstation Button
+                        RowLayout {
+                            Layout.topMargin: 6
+                            spacing: 8
+
+                            Rectangle {
+                                Layout.minimumWidth: activateBtnRow.implicitWidth + 32
+                                Layout.preferredWidth: activateBtnRow.implicitWidth + 32
+                                Layout.maximumWidth: 210
+                                height: 40
+                                radius: 8
+                                color: activateMouse.containsMouse ? Theme.primaryHover : Theme.primary
+
+                                RowLayout {
+                                    id: activateBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 8
+                                    FaIcon {
+                                        icon: Icons.key
+                                        size: 12
+                                        iconColor: "white"
+                                    }
+                                    Text {
+                                        text: I18n.t("activate_btn")
+                                        color: "white"
+                                        font.pixelSize: 12
                                         font.bold: true
                                     }
-                                    Rectangle {
-                                        width: 22
-                                        height: 22
-                                        radius: 4
-                                        color: copyPhoneMouse.containsMouse ? Theme.primaryHover : Theme.surfaceElevated
-                                        border.color: Theme.border
-                                        FaIcon {
-                                            anchors.centerIn: parent
-                                            icon: Icons.copy
-                                            size: 10
-                                            iconColor: copyPhoneMouse.containsMouse ? "white" : Theme.textMuted
+                                }
+
+                                MouseArea {
+                                    id: activateMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var key = licKeyInput.text.trim();
+                                        var name = nameInput.text.trim();
+                                        var email = emailInput.text.trim();
+
+                                        if (key.length < 10) {
+                                            Bridge.toast("error", I18n.t("val_key_err"));
+                                            return;
                                         }
-                                        MouseArea {
-                                            id: copyPhoneMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                Bridge.copyToClipboard(modelData)
+
+                                        if (name.length > 0 || email.length > 0) {
+                                            if (name.length < 2) {
+                                                Bridge.toast("error", I18n.t("val_name_err"));
+                                                return;
+                                            }
+                                            if (email.length < 5 || email.indexOf("@") === -1) {
+                                                Bridge.toast("error", I18n.t("val_email_err"));
+                                                return;
                                             }
                                         }
+
+                                        Bridge.activateLicense(key, name, email, "", "");
                                     }
                                 }
                             }
                         }
                     }
+                }
+
+                Text {
+                    visible: root.clientStatusText.length > 0
+                    text: root.clientStatusText
+                    color: Theme.textMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
                 }
             }
         }

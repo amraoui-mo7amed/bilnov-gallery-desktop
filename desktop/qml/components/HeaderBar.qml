@@ -17,10 +17,13 @@ Rectangle {
     border.color: Theme.border
     border.width: 1
 
-    property string title: "3D Asset Gallery"
-    property string subtitle: "Browse models and assets in storage"
+    property string title: I18n.t("header_gallery_title")
+    property string subtitle: I18n.t("header_gallery_subtitle")
+    property bool isSettingsActive: false
+
     signal searchRequested(string query)
-    signal openLicenseDialog()
+    signal toggleSettings()
+    signal backToLibrary()
 
     RowLayout {
         anchors.fill: parent
@@ -28,18 +31,76 @@ Rectangle {
         anchors.rightMargin: 20
         spacing: 16
 
-        ColumnLayout {
-            spacing: 2
-            Text {
-                text: root.title
-                color: Theme.textPrimary
-                font.pixelSize: 16
-                font.bold: true
+        // Left Branding & Title Section
+        RowLayout {
+            spacing: 12
+            layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
+
+            // Back button (when in settings) OR App icon (default library view)
+            Rectangle {
+                width: 36
+                height: 36
+                radius: Theme.radiusMd
+                color: root.isSettingsActive
+                    ? (backMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Theme.surfaceElevated)
+                    : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                border.color: root.isSettingsActive
+                    ? (backMouse.containsMouse ? Theme.primaryLight : Theme.border)
+                    : Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.3)
+                border.width: 1
+                clip: true
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+
+                FaIcon {
+                    visible: root.isSettingsActive
+                    anchors.centerIn: parent
+                    icon: Icons.arrowLeft
+                    size: 13
+                    iconColor: backMouse.containsMouse ? "white" : Theme.primaryLight
+                }
+
+                Image {
+                    visible: !root.isSettingsActive
+                    anchors.centerIn: parent
+                    width: 28
+                    height: 28
+                    source: "../../assets/icon.png"
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
+
+                ToolTip.visible: root.isSettingsActive && backMouse.containsMouse
+                ToolTip.text: I18n.t("back_to_library")
+                ToolTip.delay: 300
+
+                MouseArea {
+                    id: backMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: root.isSettingsActive ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: {
+                        if (root.isSettingsActive) {
+                            root.backToLibrary()
+                        }
+                    }
+                }
             }
-            Text {
-                text: root.subtitle
-                color: Theme.textMuted
-                font.pixelSize: 11
+
+            ColumnLayout {
+                spacing: 2
+                Text {
+                    text: root.title
+                    color: Theme.textPrimary
+                    font.pixelSize: 16
+                    font.bold: true
+                }
+                Text {
+                    text: root.subtitle
+                    color: Theme.textMuted
+                    font.pixelSize: 11
+                }
             }
         }
 
@@ -49,6 +110,7 @@ Rectangle {
 
         // Quick Search Field (filters local ./data library)
         Rectangle {
+            visible: !root.isSettingsActive
             width: 280
             height: 36
             radius: Theme.radiusMd
@@ -140,6 +202,40 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: Bridge.openFolder("")
+            }
+        }
+
+        // Settings Button (Icon-Only in the Header)
+        Rectangle {
+            width: 36
+            height: 36
+            radius: Theme.radiusMd
+            color: {
+                if (root.isSettingsActive) return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25);
+                return settingsMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Theme.surfaceElevated;
+            }
+            border.color: root.isSettingsActive ? Theme.primary : (settingsMouse.containsMouse ? Theme.primaryLight : Theme.border)
+            border.width: 1
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            FaIcon {
+                anchors.centerIn: parent
+                icon: Icons.cog
+                size: 14
+                iconColor: root.isSettingsActive ? Theme.primaryLight : (settingsMouse.containsMouse ? Theme.textPrimary : Theme.textMuted)
+            }
+
+            ToolTip.visible: settingsMouse.containsMouse
+            ToolTip.text: root.isSettingsActive ? I18n.t("back_to_library") : I18n.t("nav_settings")
+            ToolTip.delay: 300
+
+            MouseArea {
+                id: settingsMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleSettings()
             }
         }
     }
