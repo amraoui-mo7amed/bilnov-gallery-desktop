@@ -8,278 +8,133 @@ import "."
 Rectangle {
     id: root
     radius: Theme.radiusMd
-    color: cardMouse.containsMouse ? Theme.surfaceElevated : Theme.card
-    border.color: cardMouse.containsMouse ? Theme.primary : Theme.border
+    color: Theme.card
+    border.color: cardHover.containsMouse ? Theme.primary : Theme.border
     border.width: 1
     clip: true
 
     property var itemData: ({})
     signal openGallery(var images, string title)
 
-    Behavior on color { ColorAnimation { duration: 150 } }
     Behavior on border.color { ColorAnimation { duration: 150 } }
 
-    ColumnLayout {
+    function coverSource() {
+        var u = (root.itemData.first_image || (root.itemData.images_full && root.itemData.images_full.length > 0 ? root.itemData.images_full[0] : ""));
+        return u || "";
+    }
+
+    // Full-bleed cover image
+    Image {
+        id: cover
         anchors.fill: parent
-        spacing: 0
+        fillMode: Image.PreserveAspectCrop
+        source: root.coverSource()
+        visible: !!source && status === Image.Ready
+        asynchronous: true
+        smooth: true
+        mipmap: true
+    }
 
-        // 3D Model Thumbnail
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 165
-            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
-            clip: true
+    // Fallback background + icon when no image is available
+    Rectangle {
+        anchors.fill: parent
+        visible: !cover.visible
+        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
 
-            Image {
-                id: modelThumb
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                source: {
-                    var u = (root.itemData.first_image || (root.itemData.images_full && root.itemData.images_full.length > 0 ? root.itemData.images_full[0] : ""));
-                    if (!u) return "";
-                    return u;
-                }
-                visible: !!source && status === Image.Ready
-                asynchronous: true
-                smooth: true
-            }
-
-            // Fallback Icon when image not available or loading
-            FaIcon {
-                anchors.centerIn: parent
-                visible: !modelThumb.visible
-                icon: Icons.cubes
-                size: 34
-                iconColor: Theme.primaryLight
-                opacity: 0.5
-            }
-
-            // Top Badges Row
-            RowLayout {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 8
-
-                // Left Badge (Category / Image count)
-                Rectangle {
-                    width: Math.max(26, leftBadgeRow.implicitWidth + 14)
-                    height: 22
-                    radius: 4
-                    color: "#0F172A"
-                    border.color: "#334155"
-                    border.width: 1
-                    clip: true
-
-                    RowLayout {
-                        id: leftBadgeRow
-                        anchors.centerIn: parent
-                        spacing: 5
-                        FaIcon {
-                            icon: (root.itemData.images_count && root.itemData.images_count > 0) ? Icons.camera : Icons.tag
-                            size: 9
-                            iconColor: "#38BDF8"
-                        }
-                        Text {
-                            text: {
-                                if (root.itemData.images_count && root.itemData.images_count > 0) return root.itemData.images_count + " " + I18n.t("imgs_count");
-                                if (root.itemData.category) return root.itemData.category;
-                                return I18n.t("asset_badge");
-                            }
-                            color: "#F8FAFC"
-                            font.pixelSize: 10
-                            font.bold: true
-                            elide: Text.ElideRight
-                            Layout.maximumWidth: 120
-                        }
-                    }
-                }
-
-                Item { Layout.fillWidth: true }
-
-                // Right Badge (Model size / Status)
-                Rectangle {
-                    width: Math.max(80, rightBadgeRow.implicitWidth + 16)
-                    height: 22
-                    radius: 4
-                    color: "#0F172A"
-                    border.color: "#334155"
-                    border.width: 1
-
-                    RowLayout {
-                        id: rightBadgeRow
-                        anchors.centerIn: parent
-                        spacing: 6
-                        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
-                        FaIcon {
-                            icon: root.itemData.has_model ? Icons.check : Icons.cube
-                            size: 9
-                            iconColor: root.itemData.has_model ? "#10B981" : "#94A3B8"
-                        }
-                        Text {
-                            text: root.itemData.model_size || (root.itemData.has_model ? I18n.t("has_model") : I18n.t("no_model"))
-                            color: "#F8FAFC"
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                    }
-                }
-            }
-
-            // Click thumbnail to open gallery lightbox
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    var imgs = root.itemData.images_full || [];
-                    root.openGallery(imgs, root.itemData.title || "");
-                }
-            }
-        }
-
-        // Card Content & Actions
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.margins: 12
-            spacing: 8
-
-            // Model Title
-            Text {
-                text: root.itemData.title || "Untitled 3D Model"
-                color: Theme.textPrimary
-                font.pixelSize: 12
-                font.bold: true
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                Layout.fillWidth: true
-                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
-            }
-
-            // Subcategory / Category subtitle
-            Text {
-                text: root.itemData.category + (root.itemData.subcategory ? (" • " + root.itemData.subcategory) : "")
-                color: Theme.textMuted
-                font.pixelSize: 10
-                elide: Text.ElideRight
-                Layout.fillWidth: true
-                horizontalAlignment: I18n.isRTL ? Text.AlignRight : Text.AlignLeft
-            }
-
-            Item { Layout.fillHeight: true }
-
-            // Card Actions
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
-
-                // PRIMARY BUTTON: Open Exact Article Location (Task 6)
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 32
-                    radius: Theme.radiusSm
-                    color: openLocMouse.containsMouse ? Theme.primaryHover : Theme.primary
-
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 6
-                        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
-                        FaIcon {
-                            icon: Icons.folderOpen
-                            size: 11
-                            iconColor: "white"
-                        }
-                        Text {
-                            text: I18n.t("open_location")
-                            color: "white"
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-                    }
-
-                    MouseArea {
-                        id: openLocMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            Bridge.openArticleLocation(root.itemData.folder_path || "");
-                        }
-                    }
-                }
-
-                // View Images Lightbox Button
-                Rectangle {
-                    visible: root.itemData.images_count && root.itemData.images_count > 0
-                    width: 32
-                    height: 32
-                    radius: Theme.radiusSm
-                    color: galleryMouse.containsMouse ? Theme.surfaceElevated : Theme.card
-                    border.color: Theme.border
-
-                    FaIcon {
-                        anchors.centerIn: parent
-                        icon: Icons.image
-                        size: 11
-                        iconColor: Theme.primaryLight
-                    }
-
-                    MouseArea {
-                        id: galleryMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            var imgs = root.itemData.images_full || [];
-                            root.openGallery(imgs, root.itemData.title || "");
-                        }
-                    }
-                }
-
-                // Copy Folder Path Button
-                Rectangle {
-                    id: cardCopyBtn
-                    property bool isCopied: false
-                    Timer {
-                        id: cardCopyTimer
-                        interval: 2000
-                        onTriggered: cardCopyBtn.isCopied = false
-                    }
-                    width: 32
-                    height: 32
-                    radius: Theme.radiusSm
-                    color: copyLocMouse.containsMouse ? Theme.surfaceElevated : Theme.card
-                    border.color: cardCopyBtn.isCopied ? "#10B981" : Theme.border
-
-                    FaIcon {
-                        anchors.centerIn: parent
-                        icon: cardCopyBtn.isCopied ? Icons.check : Icons.copy
-                        size: 10
-                        iconColor: cardCopyBtn.isCopied ? "#10B981" : Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        id: copyLocMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            cardCopyBtn.isCopied = true
-                            cardCopyTimer.restart()
-                            Bridge.copyToClipboard(root.itemData.folder_full_path || root.itemData.folder_path || "")
-                        }
-                    }
-                }
-            }
+        FaIcon {
+            anchors.centerIn: parent
+            icon: Icons.cubes
+            size: 38
+            iconColor: Theme.primaryLight
+            opacity: 0.5
         }
     }
 
+    // Click anywhere on the card to open the gallery
     MouseArea {
-        id: cardMouse
+        id: cardHover
         anchors.fill: parent
         hoverEnabled: true
-        propagateComposedEvents: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: {
+            var imgs = root.itemData.images_full || [];
+            root.openGallery(imgs, root.itemData.title || "");
+        }
+    }
+
+    // Bottom action bar (icon-only buttons)
+    RowLayout {
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        anchors.margins: 10
+        spacing: 8
+        layoutDirection: I18n.isRTL ? Qt.RightToLeft : Qt.LeftToRight
+
+        // Open exact article location
+        Rectangle {
+            width: 32
+            height: 32
+            radius: 16
+            color: openLocMouse.containsMouse ? Theme.primary : "#B30A0E1A"
+            border.color: "#33FFFFFF"
+
+            FaIcon {
+                anchors.centerIn: parent
+                icon: Icons.folderOpen
+                size: 12
+                iconColor: openLocMouse.containsMouse ? "white" : Theme.primaryLight
+            }
+
+            ToolTip.visible: openLocMouse.containsMouse
+            ToolTip.text: I18n.t("open_location")
+            ToolTip.delay: 300
+
+            MouseArea {
+                id: openLocMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Bridge.openArticleLocation(root.itemData.folder_path || "")
+            }
+        }
+
+        // Copy folder path
+        Rectangle {
+            id: copyBtn
+            property bool isCopied: false
+            Timer {
+                id: copyTimer
+                interval: 2000
+                onTriggered: copyBtn.isCopied = false
+            }
+            width: 32
+            height: 32
+            radius: 16
+            color: copyMouse.containsMouse ? Theme.primary : "#B30A0E1A"
+            border.color: copyBtn.isCopied ? Theme.success : "#33FFFFFF"
+
+            FaIcon {
+                anchors.centerIn: parent
+                icon: copyBtn.isCopied ? Icons.check : Icons.copy
+                size: 11
+                iconColor: copyBtn.isCopied ? Theme.success : Theme.primaryLight
+            }
+
+            ToolTip.visible: copyMouse.containsMouse
+            ToolTip.text: I18n.t("open_location")
+            ToolTip.delay: 300
+
+            MouseArea {
+                id: copyMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    copyBtn.isCopied = true;
+                    copyTimer.restart();
+                    Bridge.copyToClipboard(root.itemData.folder_full_path || root.itemData.folder_path || "");
+                }
+            }
+        }
     }
 }

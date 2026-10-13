@@ -4,4 +4,27 @@
     - a language button -show english when french is activated/show french when english is activated-
 - [x] remove the category filter dropdown
 - [x] remove the settings widget 
-
+- [x] use icon only app for all the buttons 
+- [x] remove all the buttons, leave only:
+    - add item button 
+    - license button 
+- [x] add the filter button to allow the user to filter using a job/category/subcategory
+- [x] Remove the buttom navbar entirely -where the refresh button exist- 
+- [x] in the top navbar leave only the following items:
+    - app icon
+    - search bar
+    - filter button
+    - license button
+    - add item button
+- [x] change the app name to orga+
+- [x] remove the followingh from the article card:
+    - images count 
+    - model size 
+    - gallery button
+- [x] redesign the article bar, so you:
+    - use the full image 
+    - fit the image to the entire card 
+    - set the text above the image 
+    - when clicking the card, the gallery will be shown 
+    - use icon only buttons 
+- [x] run the app 

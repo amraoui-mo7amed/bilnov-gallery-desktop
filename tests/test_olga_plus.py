@@ -27,18 +27,27 @@ class TestOlgaPlus(unittest.TestCase):
         self.assertNotIn("SettingsView {", main_qml)
         self.assertFalse((ROOT_DIR / "desktop" / "qml" / "views" / "SettingsView.qml").exists())
 
-        # Title must be olga+
-        self.assertIn('title: "olga+ • 3D Asset Platform"', main_qml)
+        # Title must be orga+ only
+        self.assertIn('title: "orga+"', main_qml)
 
-        # HeaderBar must have openLicense signal, license button, and language button
+        # HeaderBar must have openLicense signal, license button, EN/FR language toggle,
+        # filter button and add item button
         self.assertIn("signal openLicense()", header_qml)
-        self.assertIn("Icons.globe", header_qml)
+        self.assertIn("signal addItemRequested()", header_qml)
+        self.assertIn("signal filterChanged(", header_qml)
         self.assertIn("Icons.key", header_qml)
-        self.assertIn('I18n.currentLanguage === "fr" ? "English" : "Français"', header_qml)
+        self.assertIn("Icons.filter", header_qml)
+        self.assertIn('I18n.currentLanguage === "fr" ? "EN" : "FR"', header_qml)
+        self.assertIn("id: filterPopup", header_qml)
 
         # Settings cog icon and toggleSettings must be removed
         self.assertNotIn("Icons.cog", header_qml)
         self.assertNotIn("signal toggleSettings()", header_qml)
+
+        # LibraryView control bar (search / reload / add / open folder) must be removed
+        self.assertNotIn("id: libFilterInput", lib_qml)
+        self.assertNotIn("id: reloadMouse", lib_qml)
+        self.assertNotIn("id: addItemMouse", lib_qml)
 
         # Category filter dropdown must be removed from LibraryView
         self.assertNotIn("id: catMenu", lib_qml)
@@ -53,7 +62,7 @@ class TestOlgaPlus(unittest.TestCase):
         i18n_content = (ROOT_DIR / "desktop" / "qml" / "I18n.qml").read_text(encoding="utf-8")
 
         # Check English strings
-        self.assertIn('"app_title": "olga+"', i18n_content)
+        self.assertIn('"app_title": "orga+"', i18n_content)
         self.assertIn('"header_gallery_title": "Library"', i18n_content)
         self.assertIn('"nav_settings": "Settings"', i18n_content)
         self.assertIn('"back_to_library": "Back to Library"', i18n_content)
@@ -146,9 +155,9 @@ class TestOlgaPlus(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_add_item_dialog_job_dropdown_and_subcategories(self):
+    def test_add_item_dialog_job_dropdown_and_category(self):
         add_dialog_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "AddItemDialog.qml").read_text(encoding="utf-8")
-        
+
         # Verify category field is replaced with job dropdown
         self.assertIn("selectedJob", add_dialog_qml)
         self.assertIn("jobOptions", add_dialog_qml)
@@ -158,11 +167,34 @@ class TestOlgaPlus(unittest.TestCase):
         self.assertIn("jobMenu", add_dialog_qml)
         self.assertIn("jobSelectBox", add_dialog_qml)
 
-        # Verify subcategory allows choosing from library or creating another one
-        self.assertIn("Bridge.librarySubcategories", add_dialog_qml)
-        self.assertIn("subcatMenu", add_dialog_qml)
-        self.assertIn("subcatDropdownBtn", add_dialog_qml)
-        self.assertIn("create_new_subcat", add_dialog_qml)
+        # Verify the category field is prefilled from the storage folder taxonomy
+        # and that the user can still type a custom category.
+        self.assertIn("Bridge.predefinedCategories", add_dialog_qml)
+        self.assertIn("categoryOptions", add_dialog_qml)
+        self.assertIn("categoryMenu", add_dialog_qml)
+        self.assertIn("categoryInput", add_dialog_qml)
+        self.assertIn("create_new_category", add_dialog_qml)
+        self.assertNotIn("subcatMenu", add_dialog_qml)
+        self.assertNotIn("Bridge.librarySubcategories", add_dialog_qml)
+
+    def test_predefined_categories_from_storage(self):
+        import json
+        import tempfile
+        from desktop.backend.library import LibraryManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = Path(tmp) / "storage"
+            storage.mkdir()
+            (storage / "categories.json").write_text(
+                json.dumps([
+                    {"heading": {"name": "Furniture"}, "subcategories": []},
+                    {"heading": {"name": "Kitchen"}, "subcategories": []},
+                    {"heading": {"name": "Furniture"}, "subcategories": []},
+                ]),
+                encoding="utf-8",
+            )
+            mgr = LibraryManager(base_dir=storage)
+            self.assertEqual(mgr.get_predefined_categories(), ["Furniture", "Kitchen"])
 
 
 if __name__ == "__main__":

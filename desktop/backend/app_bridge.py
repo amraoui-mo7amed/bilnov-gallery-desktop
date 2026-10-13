@@ -305,6 +305,14 @@ class AppBridge(QObject):
         except Exception:
             return []
 
+    @Property("QVariant", notify=libraryItemsChanged)
+    def predefinedCategories(self) -> List[str]:
+        """Prefilled category names discovered from the storage folder taxonomy."""
+        try:
+            return self.lib.get_predefined_categories()
+        except Exception:
+            return []
+
     @Property(str, constant=True)
     def dataDir(self) -> str:
         return str(DATA_DIR)
@@ -451,14 +459,16 @@ class AppBridge(QObject):
     # =============================================================
 
     @Slot(str, str)
-    def loadLibrary(self, search: str = "", category: str = "all"):
+    @Slot(str, str, str)
+    def loadLibrary(self, search: str = "", category: str = "all", subcategory: str = "all"):
         """Scans ./data for 3D model articles."""
         self._library_loading = True
         self.libraryLoadingChanged.emit()
 
         def _task():
             cat_filter = category if (category and category != "all") else None
-            return self.lib.scan_library(search=search or None, category_filter=cat_filter)
+            sub_filter = subcategory if (subcategory and subcategory != "all") else None
+            return self.lib.scan_library(search=search or None, category_filter=cat_filter, subcategory_filter=sub_filter)
 
         def _on_success(res):
             items = res.get("items", [])

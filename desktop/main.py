@@ -34,7 +34,7 @@ def main():
     # Register Windows Application User Model ID for proper taskbar grouping & icon display
     if sys.platform == "win32":
         import ctypes
-        myappid = "olga.plus.desktop.app"
+        myappid = "orga.plus.desktop.app"
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
@@ -48,8 +48,8 @@ def main():
 
     app = QApplication(sys.argv)
     app.setOrganizationName("OlgaPlus")
-    app.setApplicationName("olga+")
-    app.setApplicationDisplayName("olga+")
+    app.setApplicationName("orga+")
+    app.setApplicationDisplayName("orga+")
 
     # Set application icon (favicon, taskbar, and window icon)
     from PySide6.QtGui import QIcon

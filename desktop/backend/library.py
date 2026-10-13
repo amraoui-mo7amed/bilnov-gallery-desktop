@@ -116,7 +116,7 @@ class LibraryManager:
             pass
         return False
 
-    def scan_library(self, search: Optional[str] = None, category_filter: Optional[str] = None) -> Dict[str, Any]:
+    def scan_library(self, search: Optional[str] = None, category_filter: Optional[str] = None, subcategory_filter: Optional[str] = None) -> Dict[str, Any]:
         """
         Scans storage for all articles, categories, and 3D models.
         Strictly enforces the 3-level hierarchy:
@@ -241,6 +241,10 @@ class LibraryManager:
             if category_filter and category_filter != "all" and cat_name != category_filter:
                 continue
 
+            # Filter by Subcategory
+            if subcategory_filter and subcategory_filter != "all" and sub_name != subcategory_filter:
+                continue
+
             # Filter by Search Keyword
             if search:
                 s_lower = search.lower()
@@ -351,6 +355,41 @@ class LibraryManager:
             pass
 
         return sorted(list(subcats), key=lambda x: x.lower())
+
+    def get_predefined_categories(self) -> List[str]:
+        """Returns prefilled category names from the storage folder taxonomy file
+        (categories.json), falling back to the sibling data folder when needed."""
+        candidates = [
+            self.base_dir / "categories.json",
+            self.base_dir.parent / "data" / "categories.json",
+            self.base_dir.parent / "storage" / "categories.json",
+        ]
+        for candidate in candidates:
+            if not candidate.exists():
+                continue
+            try:
+                with open(candidate, encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:
+                logger.warning("Failed to read predefined categories from %s: %s", candidate, e)
+                continue
+
+            names: List[str] = []
+            if isinstance(data, dict):
+                data = data.get("categories", [])
+            if isinstance(data, list):
+                for entry in data:
+                    if not isinstance(entry, dict):
+                        continue
+                    heading = entry.get("heading") or {}
+                    name = heading.get("name") if isinstance(heading, dict) else None
+                    if not name:
+                        name = entry.get("name") or entry.get("title")
+                    if name and name not in names:
+                        names.append(str(name))
+            if names:
+                return names
+        return []
 
     def add_item(
         self,

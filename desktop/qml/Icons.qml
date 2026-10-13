@@ -63,4 +63,5 @@ Item {
     readonly property string unlock: "\uf09c"
     readonly property string user: "\uf007"
     readonly property string building: "\uf1ad"
+    readonly property string briefcase: "\uf0b1"
 }

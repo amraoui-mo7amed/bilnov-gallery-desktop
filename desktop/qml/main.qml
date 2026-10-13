@@ -12,7 +12,7 @@ ApplicationWindow {
     height: 760
     minimumWidth: 980
     minimumHeight: 640
-    title: "olga+ • 3D Asset Platform"
+    title: "orga+"
     color: Theme.background
 
     // Font Awesome Loaders
@@ -51,6 +51,10 @@ ApplicationWindow {
             onOpenLicense: {
                 licenseDialog.open()
             }
+            onAddItemRequested: addItemDialog.open()
+            onFilterChanged: function(job, category, subcategory) {
+                libraryView.setFilter(job, category, subcategory)
+            }
         }
 
         // Library View is the default and only primary view
@@ -61,7 +65,6 @@ ApplicationWindow {
             onOpenGallery: function(images, title) {
                 lightbox.open(images, title, 0)
             }
-            onAddItemRequested: addItemDialog.open()
         }
     }
 

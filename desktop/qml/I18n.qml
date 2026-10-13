@@ -33,7 +33,7 @@ Item {
     readonly property var translations: ({
         "en": {
             // App & Navigation
-            "app_title": "olga+",
+            "app_title": "orga+",
             "app_subtitle": "3D Asset Platform",
             "nav_gallery": "Library",
             "nav_categories": "Category",
@@ -73,6 +73,14 @@ Item {
             "header_settings_subtitle": "Manage language, license and trial status",
             "search_placeholder": "Search storage models...",
             "open_storage_btn": "Open Storage",
+            "filter_title": "Filter",
+            "filter_job_label": "Job",
+            "filter_category_label": "Category",
+            "filter_subcategory_label": "Subcategory",
+            "all_jobs": "All jobs",
+            "all_subcategories": "All subcategories",
+            "filter_clear_btn": "Reset",
+            "filter_apply_btn": "Done",
 
             // Gallery / Library View
             "filter_placeholder": "Filter models by name, category, or file...",
@@ -103,9 +111,13 @@ Item {
             "job_graphiste": "Graphiste",
             "job_video_maker": "Video Maker",
             "add_category_label": "Category",
-            "add_category_placeholder": "My Models",
+            "add_category_placeholder": "Category name",
             "add_subcategory_label": "Subcategory",
             "add_subcategory_placeholder": "Choose from library or type a new one...",
+            "add_category_hint": "Pick a prefilled category or type your own",
+            "choose_category": "Choose from storage",
+            "create_new_category": "Create new: \"{1}\"",
+            "no_categories_available": "No categories available yet",
             "choose_from_library": "Choose from library",
             "create_new_subcat": "Create new: \"{1}\"",
             "no_library_subcats": "No subcategories in library yet",
@@ -204,7 +216,7 @@ Item {
             "app_phone_value": "+213775189229",
 
             // Activation Dialog / Fields
-            "activation_title": "olga+ Activation",
+            "activation_title": "orga+ Activation",
             "activation_subtitle": "License Management & Hardware Binding",
             "device_fingerprint": "DEVICE HARDWARE FINGERPRINT (SHA-256)",
             "license_key_label": "License Key *",
@@ -224,7 +236,7 @@ Item {
 
             // Lockout Barrier
             "lock_title": "Workstation Activation Required",
-            "lock_desc": "A valid olga+ license is required to access local 3D assets.",
+            "lock_desc": "A valid orga+ license is required to access local 3D assets.",
             "btn_enter_key": "Enter License Key",
 
             // Toasts & Feedback
@@ -290,7 +302,7 @@ Item {
         },
         "fr": {
             // App & Navigation
-            "app_title": "olga+",
+            "app_title": "orga+",
             "app_subtitle": "Plateforme d'actifs 3D",
             "nav_gallery": "Bibliothèque",
             "nav_categories": "Catégorie",
@@ -330,6 +342,14 @@ Item {
             "header_settings_subtitle": "Gérer la langue, la licence et le statut d'essai",
             "search_placeholder": "Rechercher dans le stockage...",
             "open_storage_btn": "Ouvrir le stockage",
+            "filter_title": "Filtrer",
+            "filter_job_label": "Métier",
+            "filter_category_label": "Catégorie",
+            "filter_subcategory_label": "Sous-catégorie",
+            "all_jobs": "Tous les métiers",
+            "all_subcategories": "Toutes les sous-catégories",
+            "filter_clear_btn": "Réinitialiser",
+            "filter_apply_btn": "Terminé",
 
             // Gallery / Library View
             "filter_placeholder": "Filtrer par nom, catégorie ou fichier...",
@@ -360,9 +380,13 @@ Item {
             "job_graphiste": "Graphiste",
             "job_video_maker": "Video Maker",
             "add_category_label": "Catégorie",
-            "add_category_placeholder": "Mes modèles",
+            "add_category_placeholder": "Nom de la catégorie",
             "add_subcategory_label": "Sous-catégorie",
             "add_subcategory_placeholder": "Choisir dans la bibliothèque ou en créer une...",
+            "add_category_hint": "Choisissez une catégorie prédéfinie ou saisissez la vôtre",
+            "choose_category": "Choisir dans le stockage",
+            "create_new_category": "Créer nouveau : \"{1}\"",
+            "no_categories_available": "Aucune catégorie disponible",
             "choose_from_library": "Choisir dans la bibliothèque",
             "create_new_subcat": "Créer nouveau : \"{1}\"",
             "no_library_subcats": "Aucune sous-catégorie dans la bibliothèque",
@@ -461,7 +485,7 @@ Item {
             "app_phone_value": "+213775189229",
 
             // Activation Dialog / Fields
-            "activation_title": "Activation de olga+",
+            "activation_title": "Activation de orga+",
             "activation_subtitle": "Gestion de licence & Liaison matérielle",
             "device_fingerprint": "EMPREINTE MATÉRIELLE (SHA-256)",
             "license_key_label": "Clé de licence *",
@@ -481,7 +505,7 @@ Item {
 
             // Lockout Barrier
             "lock_title": "Activation du poste requise",
-            "lock_desc": "Une licence olga+ valide est requise pour accéder aux actifs 3D locaux.",
+            "lock_desc": "Une licence orga+ valide est requise pour accéder aux actifs 3D locaux.",
             "btn_enter_key": "Entrer la clé de licence",
 
             // Toasts & Feedback
