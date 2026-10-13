@@ -148,8 +148,8 @@ elif sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'olga+',
             'CFBundleDisplayName': 'olga+',
-            'CFBundleShortVersionString': '2.0.1',
-            'CFBundleVersion': '2.0.1',
+            'CFBundleShortVersionString': '2.0.2',
+            'CFBundleVersion': '2.0.2',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },
