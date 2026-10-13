@@ -97,44 +97,5 @@ Rectangle {
                 onClicked: Bridge.openArticleLocation(root.itemData.folder_path || "")
             }
         }
-
-        // Copy folder path
-        Rectangle {
-            id: copyBtn
-            property bool isCopied: false
-            Timer {
-                id: copyTimer
-                interval: 2000
-                onTriggered: copyBtn.isCopied = false
-            }
-            width: 32
-            height: 32
-            radius: 16
-            color: copyMouse.containsMouse ? Theme.primary : "#B30A0E1A"
-            border.color: copyBtn.isCopied ? Theme.success : "#33FFFFFF"
-
-            FaIcon {
-                anchors.centerIn: parent
-                icon: copyBtn.isCopied ? Icons.check : Icons.copy
-                size: 11
-                iconColor: copyBtn.isCopied ? Theme.success : Theme.primaryLight
-            }
-
-            ToolTip.visible: copyMouse.containsMouse
-            ToolTip.text: I18n.t("open_location")
-            ToolTip.delay: 300
-
-            MouseArea {
-                id: copyMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    copyBtn.isCopied = true;
-                    copyTimer.restart();
-                    Bridge.copyToClipboard(root.itemData.folder_full_path || root.itemData.folder_path || "");
-                }
-            }
-        }
     }
 }

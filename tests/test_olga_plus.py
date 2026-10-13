@@ -114,6 +114,33 @@ class TestOlgaPlus(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_articles_without_model_are_hidden(self):
+        import tempfile
+        import shutil
+        from desktop.backend.library import LibraryManager
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="olga_test_nomodel_"))
+        try:
+            with_model = tmp_dir / "Architect" / "Furniture" / "WithModel"
+            with_model.mkdir(parents=True)
+            (with_model / "image_1.jpg").write_bytes(b"img")
+            (with_model / "model").mkdir()
+            (with_model / "model" / "chair.skp").write_bytes(b"skp")
+
+            no_model = tmp_dir / "Architect" / "Furniture" / "NoModel"
+            no_model.mkdir(parents=True)
+            (no_model / "image_1.jpg").write_bytes(b"img")
+
+            mgr = LibraryManager(base_dir=tmp_dir)
+            scan = mgr.scan_library()
+
+            titles = [it["title"] for it in scan["items"]]
+            self.assertIn("WithModel", titles)
+            self.assertNotIn("NoModel", titles)
+            self.assertEqual(len(scan["items"]), 1)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def test_add_item_creates_depth_3(self):
         import tempfile
         import shutil

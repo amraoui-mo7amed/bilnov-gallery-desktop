@@ -279,11 +279,14 @@ class LibraryManager:
                 "modified_at": int(article_dir.stat().st_mtime),
             })
 
+        # Only expose articles that actually contain a model inside them.
+        items = [it for it in items if it.get("has_model")]
+
         # Sort newest first
         items.sort(key=lambda x: x["modified_at"], reverse=True)
 
-        # Categories are derived strictly from the real content of the storage folder
-        categories_list = sorted(list(categories_set))
+        # Categories are derived strictly from the visible (model-bearing) articles
+        categories_list = sorted({it["category"] for it in items if it.get("category")})
 
         return {
             "items": items,
