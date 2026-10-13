@@ -62,6 +62,35 @@ Rectangle {
         }
     }
 
+    // Category / subcategory badge
+    Rectangle {
+        id: badge
+        visible: badgeText.text.length > 0
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 10
+        width: badgeText.implicitWidth + 16
+        height: badgeText.implicitHeight + 8
+        radius: height / 2
+        color: "#B30A0E1A"
+        border.color: "#33FFFFFF"
+
+        Text {
+            id: badgeText
+            anchors.centerIn: parent
+            text: {
+                var c = root.itemData.category || "";
+                var s = root.itemData.subcategory || "";
+                if (c && s && s !== c) return c + " · " + s;
+                return c || s;
+            }
+            color: Theme.primaryLight
+            font.pixelSize: 11
+            font.bold: true
+            elide: Text.ElideRight
+        }
+    }
+
     // Bottom action bar (icon-only buttons)
     RowLayout {
         anchors.bottom: parent.bottom

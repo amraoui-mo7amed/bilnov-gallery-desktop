@@ -279,13 +279,10 @@ class LibraryManager:
                 "modified_at": int(article_dir.stat().st_mtime),
             })
 
-        # Only expose articles that actually contain a model inside them.
-        items = [it for it in items if it.get("has_model")]
-
         # Sort newest first
         items.sort(key=lambda x: x["modified_at"], reverse=True)
 
-        # Categories are derived strictly from the visible (model-bearing) articles
+        # Categories are derived from all discovered articles (with or without a model)
         categories_list = sorted({it["category"] for it in items if it.get("category")})
 
         return {
@@ -393,6 +390,28 @@ class LibraryManager:
             if names:
                 return names
         return []
+
+    def get_subcategory_map(self) -> Dict[str, List[str]]:
+        """Maps each storage category folder to its immediate subcategory folders,
+        i.e. the live storage/<category>/<subcategory>/ hierarchy. Also covers
+        user-created categories/subcategories since those are just folders."""
+        result: Dict[str, List[str]] = {}
+        if not self.base_dir.exists():
+            return result
+        try:
+            for cat_dir in sorted(self.base_dir.iterdir()):
+                if not cat_dir.is_dir() or cat_dir.name.startswith(".") or self.is_article_dir(cat_dir):
+                    continue
+                subs: List[str] = []
+                for sub_dir in sorted(cat_dir.iterdir()):
+                    if not sub_dir.is_dir() or sub_dir.name.startswith(".") or self.is_article_dir(sub_dir):
+                        continue
+                    if sub_dir.name not in subs:
+                        subs.append(sub_dir.name)
+                result[cat_dir.name] = subs
+        except Exception as e:
+            logger.error("Error reading subcategory map from disk: %s", e)
+        return result
 
     def add_item(
         self,

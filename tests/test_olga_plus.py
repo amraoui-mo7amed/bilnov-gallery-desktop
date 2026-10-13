@@ -114,7 +114,7 @@ class TestOlgaPlus(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_articles_without_model_are_hidden(self):
+    def test_articles_without_model_are_shown(self):
         import tempfile
         import shutil
         from desktop.backend.library import LibraryManager
@@ -136,8 +136,12 @@ class TestOlgaPlus(unittest.TestCase):
 
             titles = [it["title"] for it in scan["items"]]
             self.assertIn("WithModel", titles)
-            self.assertNotIn("NoModel", titles)
-            self.assertEqual(len(scan["items"]), 1)
+            self.assertIn("NoModel", titles)
+            self.assertEqual(len(scan["items"]), 2)
+
+            by_title = {it["title"]: it for it in scan["items"]}
+            self.assertTrue(by_title["WithModel"]["has_model"])
+            self.assertFalse(by_title["NoModel"]["has_model"])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 

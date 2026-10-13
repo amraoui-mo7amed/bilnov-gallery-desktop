@@ -48,6 +48,27 @@ Rectangle {
         root.filterChanged(root.jobFilter, root.categoryFilter, root.subcategoryFilter);
     }
 
+    function subcategoryOptions() {
+        var arr = [{ name: "all", label: I18n.t("all_subcategories") }];
+        // Depend on libraryItems so options refresh when storage changes.
+        void Bridge.libraryItems.length;
+        var map = Bridge.subcategoryMap || {};
+        var names = [];
+        if (root.categoryFilter && root.categoryFilter !== "all" && map[root.categoryFilter]) {
+            names = map[root.categoryFilter].slice();
+        } else {
+            for (var k in map) {
+                var lst = map[k] || [];
+                for (var j = 0; j < lst.length; j++) {
+                    if (names.indexOf(lst[j]) === -1) names.push(lst[j]);
+                }
+            }
+        }
+        names.sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+        for (var i = 0; i < names.length; i++) arr.push({ name: names[i], label: names[i] });
+        return arr;
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 20
@@ -466,6 +487,114 @@ Rectangle {
                                     root.categoryFilter = modelData.name;
                                     root.subcategoryFilter = "all";
                                     root.emitFilter();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Subcategory filter (dropdown, sourced from the storage taxonomy)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Text { text: I18n.t("filter_subcategory_label"); color: Theme.textMuted; font.pixelSize: 11; font.bold: true }
+                Rectangle {
+                    id: subcatSelectBox
+                    Layout.fillWidth: true
+                    height: 38
+                    radius: Theme.radiusMd
+                    color: Theme.surfaceElevated
+                    border.color: subcatPopup.visible ? Theme.primary : Theme.border
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12; anchors.rightMargin: 10
+                        spacing: 8
+                        FaIcon { icon: Icons.list; size: 12; iconColor: Theme.primaryLight }
+                        Text {
+                            Layout.fillWidth: true
+                            text: (root.subcategoryFilter === "all") ? I18n.t("all_subcategories") : root.subcategoryFilter
+                            color: Theme.textPrimary
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        FaIcon { icon: Icons.chevronDown; size: 10; iconColor: Theme.textMuted }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (subcatPopup.visible) subcatPopup.close();
+                            else subcatPopup.open();
+                        }
+                    }
+
+                    Popup {
+                        id: subcatPopup
+                        parent: subcatSelectBox
+                        x: 0
+                        y: subcatSelectBox.height + 4
+                        width: subcatSelectBox.width
+                        height: Math.min(subcatList.contentHeight + 8, 260)
+                        padding: 4
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                        background: Rectangle {
+                            color: Theme.surfaceElevated
+                            border.color: Theme.border
+                            border.width: 1
+                            radius: 8
+                        }
+
+                        ListView {
+                            id: subcatList
+                            anchors.fill: parent
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: root.subcategoryOptions()
+
+                            ScrollBar.vertical: ScrollBar {
+                                id: subcatScroll
+                                active: true
+                                policy: subcatList.contentHeight > subcatList.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            }
+
+                            ScrollBar.horizontal: ScrollBar {
+                                policy: subcatList.contentWidth > subcatList.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            }
+
+                            delegate: Rectangle {
+                                id: subcatRow
+                                width: subcatList.width
+                                height: 32
+                                radius: 6
+                                color: subcatRowMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : "transparent"
+
+                                Text {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    text: modelData.label
+                                    color: root.subcategoryFilter === modelData.name ? Theme.primaryLight : Theme.textPrimary
+                                    font.pixelSize: 12
+                                    font.bold: root.subcategoryFilter === modelData.name
+                                    verticalAlignment: Text.AlignVCenter
+                                    elide: Text.ElideRight
+                                }
+
+                                MouseArea {
+                                    id: subcatRowMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.subcategoryFilter = modelData.name;
+                                        subcatPopup.close();
+                                        root.emitFilter();
+                                    }
                                 }
                             }
                         }

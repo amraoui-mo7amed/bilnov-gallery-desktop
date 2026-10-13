@@ -243,7 +243,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v2.0.3"
+        return "v2.0.4"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
@@ -312,6 +312,15 @@ class AppBridge(QObject):
             return self.lib.get_predefined_categories()
         except Exception:
             return []
+
+    @Property("QVariant", notify=libraryItemsChanged)
+    def subcategoryMap(self) -> Dict[str, List[str]]:
+        """Live mapping of category -> subcategories from the storage hierarchy
+        (storage/<category>/<subcategory>), including user-created folders."""
+        try:
+            return self.lib.get_subcategory_map()
+        except Exception:
+            return {}
 
     @Property(str, constant=True)
     def dataDir(self) -> str:
