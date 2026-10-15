@@ -17,10 +17,9 @@ Rectangle {
     border.color: Theme.border
     border.width: 1
 
-    // Active filter state (job = top level folder, category = library category, subcategory)
+    // Active filter state (job = top level folder, category = second level folder)
     property string jobFilter: "all"
     property string categoryFilter: "all"
-    property string subcategoryFilter: "all"
 
     signal searchRequested(string query)
     signal openLicense()
@@ -34,28 +33,21 @@ Rectangle {
         return I18n.t("all_jobs");
     }
 
+    function jobFolder(id) {
+        if (id === "architect") return "Architect";
+        if (id === "graphiste") return "Graphiste";
+        if (id === "video maker") return "Video Maker";
+        return id;
+    }
+
     function categoryOptions() {
         var arr = [{ name: "all", label: I18n.t("all_categories") }];
-        var cats = Bridge.categories || [];
-        for (var i = 0; i < cats.length; i++) {
-            var n = cats[i].name || cats[i].title || "";
-            if (n) arr.push({ name: n, label: n });
-        }
-        return arr;
-    }
-
-    function emitFilter() {
-        root.filterChanged(root.jobFilter, root.categoryFilter, root.subcategoryFilter);
-    }
-
-    function subcategoryOptions() {
-        var arr = [{ name: "all", label: I18n.t("all_subcategories") }];
         // Depend on libraryItems so options refresh when storage changes.
         void Bridge.libraryItems.length;
         var map = Bridge.subcategoryMap || {};
         var names = [];
-        if (root.categoryFilter && root.categoryFilter !== "all" && map[root.categoryFilter]) {
-            names = map[root.categoryFilter].slice();
+        if (root.jobFilter && root.jobFilter !== "all") {
+            names = (map[root.jobFolder(root.jobFilter)] || []).slice();
         } else {
             for (var k in map) {
                 var lst = map[k] || [];
@@ -67,6 +59,10 @@ Rectangle {
         names.sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
         for (var i = 0; i < names.length; i++) arr.push({ name: names[i], label: names[i] });
         return arr;
+    }
+
+    function emitFilter() {
+        root.filterChanged(root.jobFilter, "all", root.categoryFilter);
     }
 
     RowLayout {
@@ -184,7 +180,7 @@ Rectangle {
             border.color: filterBtn.hasActiveFilter ? Theme.primary : (filterMouse.containsMouse ? Theme.primaryLight : Theme.border)
             border.width: 1
 
-            readonly property bool hasActiveFilter: root.jobFilter !== "all" || root.categoryFilter !== "all" || root.subcategoryFilter !== "all"
+            readonly property bool hasActiveFilter: root.jobFilter !== "all" || root.categoryFilter !== "all"
 
             FaIcon {
                 anchors.centerIn: parent
@@ -420,6 +416,7 @@ Rectangle {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     root.jobFilter = modelData.id;
+                                    root.categoryFilter = "all";
                                     root.emitFilter();
                                 }
                             }
@@ -428,18 +425,18 @@ Rectangle {
                 }
             }
 
-            // Category filter (dropdown)
+            // Category filter (dropdown, sourced from the storage taxonomy)
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6
                 Text { text: I18n.t("filter_category_label"); color: Theme.textMuted; font.pixelSize: 11; font.bold: true }
                 Rectangle {
-                    id: catSelectBox
+                    id: categorySelectBox
                     Layout.fillWidth: true
                     height: 38
                     radius: Theme.radiusMd
                     color: Theme.surfaceElevated
-                    border.color: catMenu.visible ? Theme.primary : Theme.border
+                    border.color: categoryPopup.visible ? Theme.primary : Theme.border
                     border.width: 1
 
                     RowLayout {
@@ -457,88 +454,21 @@ Rectangle {
                         FaIcon { icon: Icons.chevronDown; size: 10; iconColor: Theme.textMuted }
                     }
 
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: catMenu.open() }
-
-                    Menu {
-                        id: catMenu
-                        y: catSelectBox.height + 4
-                        width: catSelectBox.width
-                        background: Rectangle { color: Theme.surfaceElevated; border.color: Theme.border; radius: 8 }
-                        delegate: MenuItem {
-                            id: catItem
-                            background: Rectangle {
-                                color: catItem.highlighted ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : "transparent"
-                                radius: 6
-                            }
-                            contentItem: Text {
-                                text: catItem.text
-                                color: catItem.highlighted ? Theme.primaryLight : Theme.textPrimary
-                                font.pixelSize: 12
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 10
-                            }
-                        }
-                        Repeater {
-                            model: root.categoryOptions()
-                            MenuItem {
-                                text: modelData.label
-                                font.bold: root.categoryFilter === modelData.name
-                                onTriggered: {
-                                    root.categoryFilter = modelData.name;
-                                    root.subcategoryFilter = "all";
-                                    root.emitFilter();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Subcategory filter (dropdown, sourced from the storage taxonomy)
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: I18n.t("filter_subcategory_label"); color: Theme.textMuted; font.pixelSize: 11; font.bold: true }
-                Rectangle {
-                    id: subcatSelectBox
-                    Layout.fillWidth: true
-                    height: 38
-                    radius: Theme.radiusMd
-                    color: Theme.surfaceElevated
-                    border.color: subcatPopup.visible ? Theme.primary : Theme.border
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 12; anchors.rightMargin: 10
-                        spacing: 8
-                        FaIcon { icon: Icons.list; size: 12; iconColor: Theme.primaryLight }
-                        Text {
-                            Layout.fillWidth: true
-                            text: (root.subcategoryFilter === "all") ? I18n.t("all_subcategories") : root.subcategoryFilter
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                        }
-                        FaIcon { icon: Icons.chevronDown; size: 10; iconColor: Theme.textMuted }
-                    }
-
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (subcatPopup.visible) subcatPopup.close();
-                            else subcatPopup.open();
+                            categoryPopup.open();
                         }
                     }
 
                     Popup {
-                        id: subcatPopup
-                        parent: subcatSelectBox
+                        id: categoryPopup
+                        parent: categorySelectBox
                         x: 0
-                        y: subcatSelectBox.height + 4
-                        width: subcatSelectBox.width
-                        height: Math.min(subcatList.contentHeight + 8, 260)
+                        y: categorySelectBox.height + 4
+                        width: categorySelectBox.width
+                        height: Math.min(categoryList.contentHeight + 8, 260)
                         padding: 4
                         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -550,49 +480,49 @@ Rectangle {
                         }
 
                         ListView {
-                            id: subcatList
+                            id: categoryList
                             anchors.fill: parent
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            model: root.subcategoryOptions()
+                            model: root.categoryOptions()
 
                             ScrollBar.vertical: ScrollBar {
-                                id: subcatScroll
+                                id: categoryScroll
                                 active: true
-                                policy: subcatList.contentHeight > subcatList.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                                policy: categoryList.contentHeight > categoryList.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                             }
 
                             ScrollBar.horizontal: ScrollBar {
-                                policy: subcatList.contentWidth > subcatList.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                                policy: categoryList.contentWidth > categoryList.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                             }
 
                             delegate: Rectangle {
-                                id: subcatRow
-                                width: subcatList.width
+                                id: categoryRow
+                                width: categoryList.width
                                 height: 32
                                 radius: 6
-                                color: subcatRowMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : "transparent"
+                                color: categoryRowMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : "transparent"
 
                                 Text {
                                     anchors.fill: parent
                                     anchors.leftMargin: 10
                                     anchors.rightMargin: 10
                                     text: modelData.label
-                                    color: root.subcategoryFilter === modelData.name ? Theme.primaryLight : Theme.textPrimary
+                                    color: root.categoryFilter === modelData.name ? Theme.primaryLight : Theme.textPrimary
                                     font.pixelSize: 12
-                                    font.bold: root.subcategoryFilter === modelData.name
+                                    font.bold: root.categoryFilter === modelData.name
                                     verticalAlignment: Text.AlignVCenter
                                     elide: Text.ElideRight
                                 }
 
                                 MouseArea {
-                                    id: subcatRowMouse
+                                    id: categoryRowMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        root.subcategoryFilter = modelData.name;
-                                        subcatPopup.close();
+                                        root.categoryFilter = modelData.name;
+                                        categoryPopup.close();
                                         root.emitFilter();
                                     }
                                 }
@@ -632,7 +562,6 @@ Rectangle {
                         onClicked: {
                             root.jobFilter = "all";
                             root.categoryFilter = "all";
-                            root.subcategoryFilter = "all";
                             root.emitFilter();
                         }
                     }

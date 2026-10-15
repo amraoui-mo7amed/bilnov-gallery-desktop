@@ -1,0 +1,39 @@
+[
+  {
+    "id": "19492_house_exterior_phan_thuc",
+    "rawFolder": "19492_House_Exterior_Phan_Thuc",
+    "title": "House Exterior Phan Thuc",
+    "category": "Scenes",
+    "subcategory": "Exteriors",
+    "format": ".skp",
+    "imageUrls": [
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_1.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_2.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_3.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_4.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_5.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_6.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_7.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_8.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_9.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_10.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_11.jpg",
+      "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_12.jpg"
+    ],
+    "imageUrl": "/feeds/Scenes/Exteriors/19492_House_Exterior_Phan_Thuc/image_1.jpg",
+    "relPath": "Scenes\\Exteriors\\19492_House_Exterior_Phan_Thuc"
+  },
+  {
+    "id": "19885_planter_box",
+    "rawFolder": "19885_Planter_Box",
+    "title": "Planter Box",
+    "category": "Scenes",
+    "subcategory": "Exteriors",
+    "format": ".skp",
+    "imageUrls": [
+      "/feeds/Scenes/Exteriors/19885_Planter_Box/image_1.jpg"
+    ],
+    "imageUrl": "/feeds/Scenes/Exteriors/19885_Planter_Box/image_1.jpg",
+    "relPath": "Scenes\\Exteriors\\19885_Planter_Box"
+  }
+]
