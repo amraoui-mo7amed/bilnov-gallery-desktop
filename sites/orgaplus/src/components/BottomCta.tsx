@@ -7,7 +7,7 @@ export const BottomCta: React.FC<{ onOpenOrderModal: () => void }> = ({ onOpenOr
   const { t } = useLanguage()
 
   return (
-    <section className="py-12 sm:py-20">
+    <section className="pt-12 sm:pt-20 pb-24 sm:pb-28">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="relative rounded-3xl p-6 sm:p-14 lg:p-20 overflow-hidden bg-gradient-to-br from-indigo-900/70 via-[#111827] to-purple-950/70 border border-indigo-500/30 shadow-2xl text-center">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(600px,100%)] h-[300px] bg-indigo-500/20 blur-[120px] pointer-events-none rounded-full" />

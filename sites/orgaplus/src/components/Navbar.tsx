@@ -29,9 +29,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenOrderModal }) => {
 
   const navLinks = [
     { href: "#features", label: t("navFeatures") },
-    { href: "#workflows", label: t("navWorkflows") },
-    { href: "#order", label: t("navHowToOrder") },
-    { href: "#faq", label: t("navFaq") },
   ]
 
   return (
