@@ -1,0 +1,223 @@
+"""
+Unit tests for the upgraded orga+ Copy Tool.
+Tests model filtering, disk selection, exact limits, zip extraction to /model/,
+and auto-copying of the orga+ app.
+"""
+
+import json
+import os
+import shutil
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+from tools.orga_copy_tool import (
+    CopyController,
+    CopyItem,
+    copy_orga_app,
+    find_orga_app,
+    has_model,
+    human_size,
+    list_volumes,
+    run_copy,
+    safe_extract_zip,
+    scan_items,
+    select_exact_count,
+    select_fit_disk,
+    select_storage_limit,
+)
+
+
+class TestOrgaCopyTool(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp(prefix="test_copy_tool_"))
+        self.src_dir = self.tmp_dir / "library"
+        self.src_dir.mkdir()
+
+        # Item 1: Model (.skp) inside model/
+        self.item1 = self.src_dir / "Furniture" / "Chairs" / "Office Chair"
+        (self.item1 / "model").mkdir(parents=True)
+        (self.item1 / "image_1.jpg").write_bytes(b"PREVIEW_1_DATA" * 50)
+        (self.item1 / "meta.json").write_text('{"title": "Ergonomic Office Chair"}', encoding="utf-8")
+        (self.item1 / "model" / "office_chair.skp").write_bytes(b"SKP_MODEL_BYTES" * 100)
+
+        # Item 2: Zipped model (.zip) inside model/
+        self.item2 = self.src_dir / "Architecture" / "Doors" / "Sliding Glass Door"
+        (self.item2 / "model").mkdir(parents=True)
+        (self.item2 / "preview.png").write_bytes(b"PNG_DATA" * 50)
+        (self.item2 / "meta.json").write_text('{"title": "Sliding Glass Door"}', encoding="utf-8")
+        zip_p2 = self.item2 / "model" / "door_archive.zip"
+        with zipfile.ZipFile(zip_p2, "w") as zf:
+            zf.writestr("sliding_door.skp", b"DOOR_SKP_CONTENT" * 100)
+            zf.writestr("textures/glass.jpg", b"TEXTURE_DATA" * 50)
+
+        # Item 3: Standalone model file (.fbx) at asset root (no model/ dir in source)
+        self.item3 = self.src_dir / "Lighting" / "Lamps" / "Desk Lamp"
+        self.item3.mkdir(parents=True)
+        (self.item3 / "image_1.jpg").write_bytes(b"LAMP_PREVIEW" * 50)
+        (self.item3 / "desk_lamp.fbx").write_bytes(b"FBX_LAMP_BYTES" * 100)
+
+        # Item 4: Asset WITHOUT model (previews only -> MUST BE SKIPPED)
+        self.item4 = self.src_dir / "Decor" / "Plants" / "Indoor Plant"
+        self.item4.mkdir(parents=True)
+        (self.item4 / "image_1.jpg").write_bytes(b"PLANT_PREVIEW" * 50)
+
+        # Dummy app
+        self.app_dir = self.tmp_dir / "olga+.app"
+        self.app_dir.mkdir()
+        (self.app_dir / "Contents").mkdir()
+        (self.app_dir / "Contents" / "MacOS").mkdir()
+        (self.app_dir / "Contents" / "MacOS" / "olga+").write_bytes(b"APP_EXEC")
+        (self.app_dir / "Contents" / "Info.plist").write_text("<plist></plist>", encoding="utf-8")
+
+        # Destination disk
+        self.dest_disk = self.tmp_dir / "USB_DRIVE"
+        self.dest_disk.mkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def test_has_model(self):
+        self.assertTrue(has_model(self.item1))
+        self.assertTrue(has_model(self.item2))
+        self.assertTrue(has_model(self.item3))
+        self.assertFalse(has_model(self.item4))
+
+    def test_scan_items_filters_models_only(self):
+        items, skipped = scan_items(self.src_dir)
+        self.assertEqual(len(items), 3)
+        self.assertEqual(skipped, 1)
+
+        titles = [it.title for it in items]
+        self.assertIn("Ergonomic Office Chair", titles)
+        self.assertIn("Sliding Glass Door", titles)
+        self.assertIn("Desk Lamp", titles)
+        self.assertNotIn("Indoor Plant", titles)
+
+        # Verify formats
+        by_title = {it.title: it for it in items}
+        self.assertEqual(by_title["Ergonomic Office Chair"].model_format, "SKP")
+        self.assertFalse(by_title["Ergonomic Office Chair"].is_zip)
+
+        self.assertEqual(by_title["Sliding Glass Door"].model_format, "ZIP")
+        self.assertTrue(by_title["Sliding Glass Door"].is_zip)
+
+        self.assertEqual(by_title["Desk Lamp"].model_format, "FBX")
+        self.assertFalse(by_title["Desk Lamp"].is_zip)
+
+    def test_safe_extract_zip(self):
+        zip_p = self.tmp_dir / "test_bundle.zip"
+        with zipfile.ZipFile(zip_p, "w") as zf:
+            zf.writestr("bundle_root/table.skp", b"TABLE_SKP_DATA")
+            zf.writestr("bundle_root/textures/wood.jpg", b"WOOD_DATA")
+
+        target_model = self.tmp_dir / "output_asset" / "model"
+        ctrl = CopyController()
+        chunks = []
+        safe_extract_zip(zip_p, target_model, ctrl, on_chunk=lambda n: chunks.append(n))
+
+        # Check that single root folder was stripped and files sit in model/
+        self.assertTrue((target_model / "table.skp").exists())
+        self.assertEqual((target_model / "table.skp").read_bytes(), b"TABLE_SKP_DATA")
+        self.assertTrue((target_model / "textures" / "wood.jpg").exists())
+
+        # Check that no zip file remains in model/
+        self.assertFalse((target_model / "test_bundle.zip").exists())
+        self.assertGreater(sum(chunks), 0)
+
+    def test_selection_limits(self):
+        items, _ = scan_items(self.src_dir)
+        self.assertEqual(len(items), 3)
+
+        # Exact count
+        sel_count_1 = select_exact_count(items, 1)
+        self.assertEqual(len(sel_count_1), 1)
+
+        sel_count_2 = select_exact_count(items, 2)
+        self.assertEqual(len(sel_count_2), 2)
+
+        # Storage limit
+        tot = sum(it.total_bytes for it in items)
+        sel_storage_all = select_storage_limit(items, tot + 1000)
+        self.assertEqual(len(sel_storage_all), 3)
+
+        first_size = items[0].total_bytes
+        sel_storage_first = select_storage_limit(items, first_size + 10)
+        self.assertEqual(len(sel_storage_first), 1)
+
+        # Fit disk
+        sel_fit = select_fit_disk(items, disk_free_bytes=tot + 600 * 1024 * 1024)
+        self.assertEqual(len(sel_fit), 3)
+
+    def test_copy_orga_app(self):
+        ctrl = CopyController()
+        chunks = []
+        copied_bytes = copy_orga_app(
+            self.app_dir,
+            self.dest_disk,
+            ctrl,
+            on_chunk=lambda n: chunks.append(n),
+            log_cb=lambda m: None,
+        )
+
+        dest_app = self.dest_disk / "olga+.app"
+        self.assertTrue(dest_app.exists())
+        self.assertTrue((dest_app / "Contents" / "MacOS" / "olga+").exists())
+        self.assertTrue((dest_app / "Contents" / "Info.plist").exists())
+        self.assertGreater(copied_bytes, 0)
+
+    def test_run_copy_end_to_end(self):
+        items, _ = scan_items(self.src_dir)
+        ctrl = CopyController()
+        progress_calls = []
+
+        def on_prog(snap, item, fname):
+            progress_calls.append((snap, item, fname))
+
+        summary = run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=ctrl,
+            auto_copy_app=True,
+            app_path=self.app_dir,
+            unzip_models=True,
+            progress_cb=on_prog,
+        )
+
+        self.assertFalse(summary["stopped"])
+        self.assertEqual(summary["items_done"], 3)
+
+        # 1. Check orga+ app copied to root
+        dest_app = self.dest_disk / "olga+.app"
+        self.assertTrue(dest_app.exists())
+
+        # 2. Check item 1 (Chair): previews at root, model in model/
+        dst_chair = self.dest_disk / "Furniture" / "Chairs" / "Office Chair"
+        self.assertTrue((dst_chair / "image_1.jpg").exists())
+        self.assertTrue((dst_chair / "meta.json").exists())
+        self.assertTrue((dst_chair / "model" / "office_chair.skp").exists())
+
+        # 3. Check item 2 (Door with .zip): unzipped into model/, .zip removed
+        dst_door = self.dest_disk / "Architecture" / "Doors" / "Sliding Glass Door"
+        self.assertTrue((dst_door / "preview.png").exists())
+        self.assertTrue((dst_door / "meta.json").exists())
+        self.assertTrue((dst_door / "model" / "sliding_door.skp").exists())
+        self.assertTrue((dst_door / "model" / "textures" / "glass.jpg").exists())
+        self.assertFalse((dst_door / "model" / "door_archive.zip").exists())
+        self.assertFalse((dst_door / "door_archive.zip").exists())
+
+        # 4. Check item 3 (Desk Lamp with root .fbx): placed in model/
+        dst_lamp = self.dest_disk / "Lighting" / "Lamps" / "Desk Lamp"
+        self.assertTrue((dst_lamp / "image_1.jpg").exists())
+        self.assertTrue((dst_lamp / "model" / "desk_lamp.fbx").exists())
+
+        # 5. Check item 4 (Indoor Plant, no model): NOT copied
+        dst_plant = self.dest_disk / "Decor" / "Plants" / "Indoor Plant"
+        self.assertFalse(dst_plant.exists())
+
+        self.assertGreater(len(progress_calls), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
