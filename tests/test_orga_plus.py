@@ -271,6 +271,10 @@ class TestOrgaPlus(unittest.TestCase):
         self.assertIn("id: jobMenu\n                            z: 100005", add_item_qml)
         self.assertIn("id: categoryMenu\n                            z: 100005", add_item_qml)
 
+        # Dropdowns must have scrollable overflow with capped height
+        self.assertIn("implicitHeight: Math.min(220, contentHeight)", import_dialog_qml)
+        self.assertIn("implicitHeight: Math.min(220, contentHeight)", add_item_qml)
+
     def test_library_manager_jobs_and_folder_import(self):
         import tempfile
         import shutil

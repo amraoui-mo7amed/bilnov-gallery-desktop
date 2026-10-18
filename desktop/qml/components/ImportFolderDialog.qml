@@ -424,7 +424,24 @@ Rectangle {
                         z: 100005
                         y: jobSelectBox.height + 4
                         width: jobSelectBox.width
-                        clip: true
+
+                        contentItem: ListView {
+                            implicitHeight: Math.min(220, contentHeight)
+                            model: jobMenu.contentModel
+                            clip: true
+                            interactive: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                width: 6
+                                background: Rectangle { color: "transparent" }
+                                contentItem: Rectangle {
+                                    implicitWidth: 6
+                                    radius: 3
+                                    color: Qt.rgba(255, 255, 255, 0.25)
+                                }
+                            }
+                        }
 
                         background: Rectangle {
                             color: Theme.surfaceElevated
@@ -592,7 +609,24 @@ Rectangle {
                         z: 100005
                         y: categoryBox.height + 4
                         width: categoryBox.width
-                        clip: true
+
+                        contentItem: ListView {
+                            implicitHeight: Math.min(220, contentHeight)
+                            model: categoryMenu.contentModel
+                            clip: true
+                            interactive: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                width: 6
+                                background: Rectangle { color: "transparent" }
+                                contentItem: Rectangle {
+                                    implicitWidth: 6
+                                    radius: 3
+                                    color: Qt.rgba(255, 255, 255, 0.25)
+                                }
+                            }
+                        }
 
                         background: Rectangle {
                             color: Theme.surfaceElevated
