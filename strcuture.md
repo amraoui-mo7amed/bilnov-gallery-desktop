@@ -1,6 +1,6 @@
-# `olga+` Storage File Structure Documentation
+# `orga+` Storage File Structure Documentation
 
-This document describes the storage hierarchy and folder structure used by the **`olga+`** desktop application to discover, index, preview, and export 3D assets.
+This document describes the storage hierarchy and folder structure used by the **`orga+`** desktop application to discover, index, preview, and export 3D assets.
 
 ---
 

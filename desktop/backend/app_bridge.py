@@ -79,6 +79,10 @@ class AppBridge(QObject):
     categoriesChanged = Signal()
     categoriesLoadingChanged = Signal()
 
+    jobsChanged = Signal()
+    jobCreated = Signal(bool, str)
+    folderImported = Signal(bool, str)
+
     # User notification signals
     toast = Signal(str, str)  # (type: 'info'|'success'|'warning'|'error', message)
 
@@ -243,7 +247,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v2.0.4"
+        return "v2.0.6"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
@@ -251,8 +255,11 @@ class AppBridge(QObject):
 
     @Property(str, notify=languageChanged)
     def language(self) -> str:
-        settings = QSettings("OlgaPlus", "olga+")
+        settings = QSettings("OrgaPlus", "orga+")
         val = settings.value("language", "")
+        if not val:
+            settings_legacy = QSettings("OlgaPlus", "olga+")
+            val = settings_legacy.value("language", "")
         if not val:
             settings_old = QSettings("Bilnov", "BilnovGallery")
             val = settings_old.value("language", "en")
@@ -261,7 +268,7 @@ class AppBridge(QObject):
     @Slot(str)
     def saveLanguagePreference(self, lang: str):
         if lang in ["en", "fr"]:
-            settings = QSettings("OlgaPlus", "olga+")
+            settings = QSettings("OrgaPlus", "orga+")
             current = str(settings.value("language", ""))
             if current != lang:
                 settings.setValue("language", lang)
@@ -325,6 +332,23 @@ class AppBridge(QObject):
     @Property(str, constant=True)
     def dataDir(self) -> str:
         return str(DATA_DIR)
+
+    @Property("QVariant", notify=jobsChanged)
+    def jobOptions(self) -> List[Dict[str, Any]]:
+        """List of all available jobs (defaults + custom)."""
+        try:
+            return self.lib.get_jobs()
+        except Exception:
+            return []
+
+    @Slot(str, result=str)
+    def getJobFolder(self, job_id: str) -> str:
+        """Translates a job id to its on-disk folder name."""
+        clean_id = (job_id or "").strip().lower()
+        for j in self.lib.get_jobs():
+            if j.get("id", "").lower() == clean_id or j.get("folder", "").lower() == clean_id:
+                return j.get("folder", job_id)
+        return job_id or "Architect"
 
     # =============================================================
     # Licensing Slots
@@ -699,7 +723,7 @@ class AppBridge(QObject):
 
             backup_payload = {
                 "schema_version": "1.1.0",
-                "app": "olga+",
+                "app": "orga+",
                 "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "preferences": {
                     "language": lang,
@@ -929,11 +953,29 @@ class AppBridge(QObject):
             self.toast.emit("error", f"Import failed: {str(e)}")
             return False
 
-    @Slot(result=bool)
-    def importFolder(self) -> bool:
-        """
-        Opens a directory picker to import an entire folder of 3D assets into the library.
-        """
+    @Slot(str, result=bool)
+    def createJob(self, name: str) -> bool:
+        """Creates a new job folder in the library and emits jobsChanged."""
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            self.toast.emit("error", "Job name cannot be empty")
+            self.jobCreated.emit(False, "Job name cannot be empty")
+            return False
+        try:
+            res = self.lib.create_job(clean_name)
+            self.jobsChanged.emit()
+            self.toast.emit("success", f"Job \"{res['name']}\" created successfully")
+            self.jobCreated.emit(True, res["name"])
+            return True
+        except Exception as e:
+            logger.error("Failed to create job: %s", e)
+            self.toast.emit("error", f"Could not create job: {e}")
+            self.jobCreated.emit(False, str(e))
+            return False
+
+    @Slot(result=str)
+    def pickFolder(self) -> str:
+        """Opens native directory picker. Returns absolute folder path or empty string."""
         from PySide6.QtWidgets import QFileDialog
         dir_path = QFileDialog.getExistingDirectory(
             None,
@@ -941,7 +983,41 @@ class AppBridge(QObject):
             "",
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
-        if not dir_path:
+        return str(dir_path or "")
+
+    @Slot(result=bool)
+    @Slot(str, result=bool)
+    @Slot(str, str, result=bool)
+    @Slot(str, str, str, result=bool)
+    def importFolder(self, folder_path: str = "", job: str = "Architect", category: str = "General") -> bool:
+        """
+        Imports an entire directory of 3D assets or an asset folder into the library:
+        storage / <job> / <category> / <asset>
+        """
+        raw_path = folder_path.strip() if folder_path else ""
+        if not raw_path:
+            raw_path = self.pickFolder()
+        if not raw_path:
             return False
-        return self.importData(dir_path)
+
+        def _task():
+            return self.lib.import_folder(Path(raw_path), job=job, category=category)
+
+        def _on_success(res):
+            count = res.get("count", 0)
+            target_job = res.get("job", job)
+            target_cat = res.get("category", category)
+            self.folderImported.emit(True, raw_path)
+            self.toast.emit("success", f"Successfully imported {count} asset(s) into {target_job} / {target_cat}")
+            self.loadLibrary()
+            self.loadCategories()
+            self.jobsChanged.emit()
+
+        def _on_error(exc):
+            self.folderImported.emit(False, str(exc))
+            self.toast.emit("error", f"Import failed: {exc}")
+
+        self.thread_pool.start(Worker(_task, on_success=_on_success, on_error=_on_error))
+        return True
+
 

@@ -52,6 +52,13 @@ ApplicationWindow {
                 licenseDialog.open()
             }
             onAddItemRequested: addItemDialog.open()
+            onImportFolderRequested: {
+                var folder = Bridge.pickFolder()
+                if (folder && folder.length > 0) {
+                    importFolderDialog.open(folder)
+                }
+            }
+            onCreateNewJobRequested: newJobDialog.openForTarget("header")
             onFilterChanged: function(job, category, subcategory) {
                 libraryView.setFilter(job, category, subcategory)
             }
@@ -164,6 +171,28 @@ ApplicationWindow {
     // Add Item to Library Modal
     AddItemDialog {
         id: addItemDialog
+        onCreateNewJobRequested: newJobDialog.openForTarget("addItem")
+    }
+
+    // Import Folder to Library Modal
+    ImportFolderDialog {
+        id: importFolderDialog
+        onCreateNewJobRequested: newJobDialog.openForTarget("importFolder")
+    }
+
+    // Create New Job Modal
+    NewJobDialog {
+        id: newJobDialog
+        onJobCreated: function(jobName, targetCaller) {
+            if (targetCaller === "addItem") {
+                addItemDialog.selectedJob = jobName.toLowerCase();
+            } else if (targetCaller === "importFolder") {
+                importFolderDialog.selectedJob = jobName.toLowerCase();
+            } else if (targetCaller === "header") {
+                header.jobFilter = jobName.toLowerCase();
+                header.emitFilter();
+            }
+        }
     }
 
     // Global Toast Notification

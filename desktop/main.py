@@ -47,7 +47,7 @@ def main():
     QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 
     app = QApplication(sys.argv)
-    app.setOrganizationName("OlgaPlus")
+    app.setOrganizationName("OrgaPlus")
     app.setApplicationName("orga+")
     app.setApplicationDisplayName("orga+")
 

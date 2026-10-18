@@ -18,6 +18,12 @@ logger = logging.getLogger("library")
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 SUPPORTED_MODEL_EXTS = {".skp", ".obj", ".fbx", ".blend", ".zip", ".rar", ".7z", ".3ds", ".max", ".c4d", ".glb", ".gltf", ".stl"}
 
+DEFAULT_JOBS = [
+    {"id": "architect", "name": "Architect", "folder": "Architect"},
+    {"id": "graphiste", "name": "Graphiste", "folder": "Graphiste"},
+    {"id": "video maker", "name": "Video Maker", "folder": "Video Maker"},
+]
+
 
 def format_bytes(size_bytes: int) -> str:
     if size_bytes <= 0:
@@ -238,11 +244,11 @@ class LibraryManager:
                 total_size_bytes += img.stat().st_size
 
             # Filter by Category
-            if category_filter and category_filter != "all" and cat_name != category_filter:
+            if category_filter and category_filter != "all" and cat_name.lower() != category_filter.lower():
                 continue
 
             # Filter by Subcategory
-            if subcategory_filter and subcategory_filter != "all" and sub_name != subcategory_filter:
+            if subcategory_filter and subcategory_filter != "all" and sub_name.lower() != subcategory_filter.lower():
                 continue
 
             # Filter by Search Keyword
@@ -487,5 +493,229 @@ class LibraryManager:
 
         return {"folder_path": str(target.relative_to(self.base_dir)), "title": clean_title}
 
+    def get_jobs(self) -> List[Dict[str, Any]]:
+        """Returns all available jobs: default jobs + discovered folders + user-created jobs."""
+        jobs: List[Dict[str, Any]] = [dict(j) for j in DEFAULT_JOBS]
+        seen_folders = {j["folder"].lower() for j in jobs}
+        seen_ids = {j["id"].lower() for j in jobs}
+
+        # 1. Check jobs.json if exists
+        jobs_file = self.base_dir / "jobs.json"
+        if jobs_file.exists():
+            try:
+                with open(jobs_file, "r", encoding="utf-8") as f:
+                    saved_jobs = json.load(f)
+                    if isinstance(saved_jobs, list):
+                        for sj in saved_jobs:
+                            if isinstance(sj, dict) and "name" in sj:
+                                name = str(sj["name"]).strip()
+                                folder = str(sj.get("folder", name)).strip()
+                                jid = str(sj.get("id", name.lower())).strip()
+                                if folder.lower() not in seen_folders:
+                                    seen_folders.add(folder.lower())
+                                    seen_ids.add(jid.lower())
+                                    jobs.append({
+                                        "id": jid,
+                                        "name": name,
+                                        "folder": folder,
+                                        "is_custom": True,
+                                    })
+            except Exception as e:
+                logger.warning("Failed to read jobs.json: %s", e)
+
+        # 2. Check live folders in base_dir
+        if self.base_dir.exists():
+            try:
+                for d in sorted(self.base_dir.iterdir()):
+                    if not d.is_dir() or d.name.startswith(".") or self.is_article_dir(d):
+                        continue
+                    if d.name.lower() in ("imported", "categories", "__pycache__"):
+                        continue
+                    if d.name.lower() not in seen_folders:
+                        seen_folders.add(d.name.lower())
+                        jobs.append({
+                            "id": d.name.lower(),
+                            "name": d.name,
+                            "folder": d.name,
+                            "is_custom": True,
+                        })
+            except Exception as e:
+                logger.warning("Failed to scan base_dir for jobs: %s", e)
+
+        return jobs
+
+    def create_job(self, name: str) -> Dict[str, Any]:
+        """Creates a new job folder in the library and persists it in jobs.json."""
+        clean_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", str(name or "")).strip().strip(".")
+        if not clean_name:
+            raise ValueError("Job name is required")
+
+        # Check existing
+        for j in self.get_jobs():
+            if j["name"].lower() == clean_name.lower() or j["folder"].lower() == clean_name.lower():
+                job_dir = self.base_dir / j["folder"]
+                job_dir.mkdir(parents=True, exist_ok=True)
+                return j
+
+        job_dir = self.base_dir / clean_name
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        new_job = {
+            "id": clean_name.lower(),
+            "name": clean_name,
+            "folder": clean_name,
+            "is_custom": True,
+        }
+
+        jobs_file = self.base_dir / "jobs.json"
+        saved_jobs: List[Dict[str, Any]] = []
+        if jobs_file.exists():
+            try:
+                with open(jobs_file, "r", encoding="utf-8") as f:
+                    saved_jobs = json.load(f)
+                    if not isinstance(saved_jobs, list):
+                        saved_jobs = []
+            except Exception:
+                saved_jobs = []
+
+        if not any(sj.get("name", "").lower() == clean_name.lower() for sj in saved_jobs):
+            saved_jobs.append(new_job)
+            try:
+                with open(jobs_file, "w", encoding="utf-8") as f:
+                    json.dump(saved_jobs, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.warning("Failed to save jobs.json: %s", e)
+
+        return new_job
+
+    def import_folder(
+        self,
+        folder_path: Path,
+        job: str = "Architect",
+        category: str = "General",
+    ) -> Dict[str, Any]:
+        """
+        Imports an entire directory of 3D assets or a single asset folder into the library:
+        storage / <job> / <category> / <asset>
+        Guarantees strict 3-level hierarchy so all items are discovered by scan_library().
+        """
+        import shutil
+        from datetime import datetime
+
+        src_path = Path(folder_path).resolve()
+        if not src_path.exists() or not src_path.is_dir():
+            raise ValueError(f"Selected folder does not exist or is not a directory: {folder_path}")
+
+        def _safe(s: str) -> str:
+            clean = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", str(s or "")).strip().strip(".")
+            return clean or "General"
+
+        cat_job = _safe(job) or "Architect"
+        sub_cat = _safe(category) or "General"
+        target_parent = self.base_dir / cat_job / sub_cat
+        target_parent.mkdir(parents=True, exist_ok=True)
+
+        def _copy_single_asset(asset_src: Path, asset_title: Optional[str] = None) -> bool:
+            title = (asset_title or asset_src.name).replace("_", " ").replace("-", " ").strip()
+            folder_clean_name = _safe(asset_src.name) or "Imported_Asset"
+            dest = target_parent / folder_clean_name
+            counter = 1
+            while dest.exists():
+                dest = target_parent / f"{folder_clean_name}_{counter}"
+                counter += 1
+            dest.mkdir(parents=True, exist_ok=True)
+
+            try:
+                # 1. Images
+                raw_imgs = []
+                for f in asset_src.iterdir():
+                    if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_IMAGE_EXTS:
+                        raw_imgs.append(f)
+                imgs_subdir = asset_src / "images"
+                if imgs_subdir.exists() and imgs_subdir.is_dir():
+                    for f in imgs_subdir.iterdir():
+                        if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_IMAGE_EXTS:
+                            raw_imgs.append(f)
+
+                def _sort_key(p: Path):
+                    m = re.search(r"(\d+)", p.stem)
+                    return int(m.group(1)) if m else 9999
+                raw_imgs.sort(key=_sort_key)
+
+                copied_images = []
+                for idx, img in enumerate(raw_imgs, start=1):
+                    dest_img = dest / f"image_{idx}{img.suffix.lower()}"
+                    shutil.copy2(img, dest_img)
+                    copied_images.append(dest_img.name)
+
+                # 2. Models
+                model_dir = dest / "model"
+                model_dir.mkdir(parents=True, exist_ok=True)
+
+                src_model_dir = asset_src / "model"
+                raw_models = []
+                if src_model_dir.exists() and src_model_dir.is_dir():
+                    for f in src_model_dir.iterdir():
+                        if f.is_file() and not f.name.startswith("."):
+                            raw_models.append(f)
+
+                for f in asset_src.iterdir():
+                    if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_MODEL_EXTS:
+                        raw_models.append(f)
+
+                for m in raw_models:
+                    dest_m = model_dir / m.name
+                    counter_m = 1
+                    while dest_m.exists():
+                        dest_m = model_dir / f"{m.stem}_{counter_m}{m.suffix}"
+                        counter_m += 1
+                    shutil.copy2(m, dest_m)
+
+                # 3. Meta
+                existing_meta = self.get_meta(asset_src)
+                meta_data = {
+                    "title": existing_meta.get("title") or title,
+                    "category": cat_job,
+                    "subcategory": sub_cat,
+                    "thumbnail": copied_images[0] if copied_images else "",
+                    "created_at": datetime.now().isoformat(),
+                    "source": "imported_folder",
+                }
+                self.save_meta(dest, meta_data)
+                return True
+            except Exception as e:
+                logger.error("Failed to copy asset %s: %s", asset_src, e)
+                shutil.rmtree(dest, ignore_errors=True)
+                return False
+
+        child_dirs = [d for d in src_path.iterdir() if d.is_dir() and not d.name.startswith(".") and d.name.lower() not in ("model", "images")]
+        asset_dirs = [d for d in child_dirs if self.is_article_dir(d)]
+
+        imported_count = 0
+        if asset_dirs:
+            for ad in asset_dirs:
+                if _copy_single_asset(ad):
+                    imported_count += 1
+        elif self.is_article_dir(src_path):
+            if _copy_single_asset(src_path):
+                imported_count += 1
+        elif child_dirs:
+            for cd in child_dirs:
+                if _copy_single_asset(cd):
+                    imported_count += 1
+            if imported_count == 0:
+                if _copy_single_asset(src_path):
+                    imported_count += 1
+        else:
+            if _copy_single_asset(src_path):
+                imported_count += 1
+
+        return {
+            "count": imported_count,
+            "job": cat_job,
+            "category": sub_cat,
+        }
+
 
 library_manager = LibraryManager()
+

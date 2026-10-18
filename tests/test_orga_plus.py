@@ -1,5 +1,5 @@
 """
-Unit tests for olga+ rebranding, QML structure, and licensing adjustments.
+Unit tests for orga+ rebranding, QML structure, and licensing adjustments.
 """
 
 import unittest
@@ -8,13 +8,13 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
-class TestOlgaPlus(unittest.TestCase):
+class TestOrgaPlus(unittest.TestCase):
     def test_app_naming_and_config(self):
         import config
         from desktop import main as desktop_main
 
-        self.assertIn("olga+", config.__doc__)
-        self.assertIn("OlgaPlus", str(config.USER_CACHE_DIR))
+        self.assertIn("orga+", config.__doc__)
+        self.assertIn("OrgaPlus", str(config.USER_CACHE_DIR))
 
     def test_qml_header_buttons_and_settings_removed(self):
         main_qml = (ROOT_DIR / "desktop" / "qml" / "main.qml").read_text(encoding="utf-8")
@@ -227,7 +227,114 @@ class TestOlgaPlus(unittest.TestCase):
             mgr = LibraryManager(base_dir=storage)
             self.assertEqual(mgr.get_predefined_categories(), ["Furniture", "Kitchen"])
 
+    def test_header_bar_import_folder_and_new_job_buttons(self):
+        header_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "HeaderBar.qml").read_text(encoding="utf-8")
+
+        # Must have importFolderRequested and createNewJobRequested signals
+        self.assertIn("signal importFolderRequested()", header_qml)
+        self.assertIn("signal createNewJobRequested()", header_qml)
+
+        # Must have importFolderBtn (icon only) with Icons.folderOpen
+        self.assertIn("id: importFolderBtn", header_qml)
+        self.assertIn("Icons.folderOpen", header_qml)
+        self.assertIn("root.importFolderRequested()", header_qml)
+
+        # Must have dynamic job options and "+ New Job" in filterPopup
+        self.assertIn("getFilterJobOptions()", header_qml)
+        self.assertIn("newJobFilterBtn", header_qml)
+        self.assertIn("newJobFilterMouse", header_qml)
+        self.assertIn("root.createNewJobRequested()", header_qml)
+
+    def test_new_job_dialog_structure(self):
+        job_dialog_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "NewJobDialog.qml").read_text(encoding="utf-8")
+
+        self.assertIn("parent: Overlay.overlay", job_dialog_qml)
+        self.assertIn("signal jobCreated(", job_dialog_qml)
+        self.assertIn("id: jobNameInput", job_dialog_qml)
+        self.assertIn("Bridge.createJob(", job_dialog_qml)
+        self.assertIn("openForTarget(", job_dialog_qml)
+
+    def test_import_folder_dialog_structure(self):
+        import_dialog_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "ImportFolderDialog.qml").read_text(encoding="utf-8")
+
+        self.assertIn("signal createNewJobRequested()", import_dialog_qml)
+        self.assertIn("browseFolder()", import_dialog_qml)
+        self.assertIn("Bridge.pickFolder()", import_dialog_qml)
+        self.assertIn("Bridge.importFolder(", import_dialog_qml)
+        self.assertIn("categoryInput", import_dialog_qml)
+        self.assertIn("jobSelectBox", import_dialog_qml)
+
+    def test_library_manager_jobs_and_folder_import(self):
+        import tempfile
+        import shutil
+        from desktop.backend.library import LibraryManager
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="olga_test_jobs_import_"))
+        try:
+            mgr = LibraryManager(base_dir=tmp_dir)
+
+            # 1. Test get_jobs returns default jobs
+            jobs = mgr.get_jobs()
+            job_names = [j["name"] for j in jobs]
+            self.assertIn("Architect", job_names)
+            self.assertIn("Graphiste", job_names)
+            self.assertIn("Video Maker", job_names)
+
+            # 2. Test create_job
+            new_job = mgr.create_job("Interior Designer")
+            self.assertEqual(new_job["name"], "Interior Designer")
+            self.assertTrue((tmp_dir / "Interior Designer").exists())
+
+            # Check that get_jobs now contains Interior Designer
+            updated_jobs = mgr.get_jobs()
+            updated_names = [j["name"] for j in updated_jobs]
+            self.assertIn("Interior Designer", updated_names)
+
+            # 3. Test import_folder with single asset folder
+            src_asset_folder = tmp_dir / "my_source_asset"
+            src_asset_folder.mkdir()
+            (src_asset_folder / "preview.png").write_bytes(b"dummy_png")
+            (src_asset_folder / "table.skp").write_bytes(b"dummy_skp")
+
+            import_res = mgr.import_folder(
+                src_asset_folder,
+                job="Interior Designer",
+                category="Tables",
+            )
+            self.assertEqual(import_res["count"], 1)
+            self.assertEqual(import_res["job"], "Interior Designer")
+            self.assertEqual(import_res["category"], "Tables")
+
+            # Check files were placed in depth 3: storage / <Job> / <Category> / <Asset>
+            imported_asset = tmp_dir / "Interior Designer" / "Tables" / "my_source_asset"
+            self.assertTrue(imported_asset.exists())
+            self.assertTrue((imported_asset / "image_1.png").exists())
+            self.assertTrue((imported_asset / "model" / "table.skp").exists())
+            self.assertTrue((imported_asset / "meta.json").exists())
+
+            # Scan library and verify it appears with correct job and category
+            scan = mgr.scan_library(category_filter="Interior Designer", subcategory_filter="Tables")
+            self.assertEqual(len(scan["items"]), 1)
+            self.assertEqual(scan["items"][0]["category"], "Interior Designer")
+            self.assertEqual(scan["items"][0]["subcategory"], "Tables")
+
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_app_bridge_job_and_folder_import(self):
+        from desktop.backend.app_bridge import AppBridge
+
+        bridge = AppBridge()
+        # Verify jobOptions returns default jobs
+        job_options = bridge.jobOptions
+        self.assertGreaterEqual(len(job_options), 3)
+
+        # Verify getJobFolder
+        self.assertEqual(bridge.getJobFolder("architect"), "Architect")
+        self.assertEqual(bridge.getJobFolder("graphiste"), "Graphiste")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

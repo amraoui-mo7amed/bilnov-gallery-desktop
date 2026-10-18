@@ -64,11 +64,11 @@ class TestOrgaCopyTool(unittest.TestCase):
         (self.item4 / "image_1.jpg").write_bytes(b"PLANT_PREVIEW" * 50)
 
         # Dummy app
-        self.app_dir = self.tmp_dir / "olga+.app"
+        self.app_dir = self.tmp_dir / "orga+.app"
         self.app_dir.mkdir()
         (self.app_dir / "Contents").mkdir()
         (self.app_dir / "Contents" / "MacOS").mkdir()
-        (self.app_dir / "Contents" / "MacOS" / "olga+").write_bytes(b"APP_EXEC")
+        (self.app_dir / "Contents" / "MacOS" / "orga+").write_bytes(b"APP_EXEC")
         (self.app_dir / "Contents" / "Info.plist").write_text("<plist></plist>", encoding="utf-8")
 
         # Destination disk
@@ -161,9 +161,9 @@ class TestOrgaCopyTool(unittest.TestCase):
             log_cb=lambda m: None,
         )
 
-        dest_app = self.dest_disk / "olga+.app"
+        dest_app = self.dest_disk / "orga+.app"
         self.assertTrue(dest_app.exists())
-        self.assertTrue((dest_app / "Contents" / "MacOS" / "olga+").exists())
+        self.assertTrue((dest_app / "Contents" / "MacOS" / "orga+").exists())
         self.assertTrue((dest_app / "Contents" / "Info.plist").exists())
         self.assertGreater(copied_bytes, 0)
 
@@ -189,7 +189,7 @@ class TestOrgaCopyTool(unittest.TestCase):
         self.assertEqual(summary["items_done"], 3)
 
         # 1. Check orga+ app copied to root
-        dest_app = self.dest_disk / "olga+.app"
+        dest_app = self.dest_disk / "orga+.app"
         self.assertTrue(dest_app.exists())
 
         # 2. Check item 1 (Chair): previews at root, model in model/

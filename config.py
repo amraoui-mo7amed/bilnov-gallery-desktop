@@ -1,5 +1,5 @@
 """
-olga+ Configuration
+orga+ Configuration
 """
 
 import os
@@ -35,11 +35,11 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Separate user cache directory outside ./data to protect data folder
 if sys.platform == "darwin":
-    USER_CACHE_DIR = Path.home() / "Library" / "Caches" / "OlgaPlus"
+    USER_CACHE_DIR = Path.home() / "Library" / "Caches" / "OrgaPlus"
 elif sys.platform == "win32":
-    USER_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "OlgaPlus" / "Cache"
+    USER_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "OrgaPlus" / "Cache"
 else:
-    USER_CACHE_DIR = Path.home() / ".cache" / "olga_plus"
+    USER_CACHE_DIR = Path.home() / ".cache" / "orga_plus"
 
 IMAGE_CACHE_DIR = USER_CACHE_DIR / "images"
 IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)

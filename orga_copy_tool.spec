@@ -56,7 +56,7 @@ elif sys.platform == 'darwin':
                    upx_exclude=[], name='orga+ Copy Tool')
     app = BUNDLE(
         coll, name='orga+ Copy Tool.app', icon=icon_icns,
-        bundle_identifier='com.olgaplus.copytool',
+        bundle_identifier='com.orgaplus.copytool',
         info_plist={
             'CFBundleName': 'orga+ Copy Tool',
             'CFBundleDisplayName': 'orga+ Copy Tool',

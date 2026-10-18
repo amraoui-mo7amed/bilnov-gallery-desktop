@@ -24,20 +24,59 @@ Rectangle {
     signal searchRequested(string query)
     signal openLicense()
     signal addItemRequested()
+    signal importFolderRequested()
+    signal createNewJobRequested()
     signal filterChanged(string job, string category, string subcategory)
 
     function jobDisplay(id) {
+        if (id === "all") return I18n.t("all_jobs");
         if (id === "architect") return I18n.t("job_architect");
         if (id === "graphiste") return I18n.t("job_graphiste");
         if (id === "video maker") return I18n.t("job_video_maker");
-        return I18n.t("all_jobs");
+        var jobs = Bridge.jobOptions || [];
+        for (var i = 0; i < jobs.length; i++) {
+            if (jobs[i].id && String(jobs[i].id).toLowerCase() === String(id).toLowerCase()) {
+                return jobs[i].name || id;
+            }
+        }
+        return id;
     }
 
     function jobFolder(id) {
         if (id === "architect") return "Architect";
         if (id === "graphiste") return "Graphiste";
         if (id === "video maker") return "Video Maker";
+        var jobs = Bridge.jobOptions || [];
+        for (var i = 0; i < jobs.length; i++) {
+            if (jobs[i].id && String(jobs[i].id).toLowerCase() === String(id).toLowerCase()) {
+                return jobs[i].folder || id;
+            }
+        }
         return id;
+    }
+
+    function getFilterJobOptions() {
+        var base = [
+            { id: "all" },
+            { id: "architect" },
+            { id: "graphiste" },
+            { id: "video maker" }
+        ];
+        var jobs = Bridge.jobOptions || [];
+        for (var i = 0; i < jobs.length; i++) {
+            var j = jobs[i];
+            var exists = false;
+            for (var k = 0; k < base.length; k++) {
+                if (base[k].id.toLowerCase() === (j.id || "").toLowerCase()) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists && j.id) {
+                base.push({ id: j.id });
+            }
+        }
+        return base;
     }
 
     function categoryOptions() {
@@ -289,6 +328,38 @@ Rectangle {
             }
         }
 
+        // Import Folder Button (icon only)
+        Rectangle {
+            id: importFolderBtn
+            width: 36
+            height: 36
+            radius: Theme.radiusMd
+            color: importFolderMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : Theme.surfaceElevated
+            border.color: importFolderMouse.containsMouse ? Theme.primaryLight : Theme.border
+            border.width: 1
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            FaIcon {
+                anchors.centerIn: parent
+                icon: Icons.folderOpen
+                size: 14
+                iconColor: Theme.textPrimary
+            }
+
+            MouseArea {
+                id: importFolderMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.importFolderRequested()
+            }
+
+            ToolTip.visible: importFolderMouse.containsMouse
+            ToolTip.text: I18n.t("import_folder_btn")
+            ToolTip.delay: 300
+        }
+
         // Add Item Button (icon only)
         Rectangle {
             id: addBtn
@@ -325,7 +396,7 @@ Rectangle {
         id: filterPopup
         parent: Overlay.overlay
         anchors.centerIn: parent
-        width: Math.min(440, parent.width - 40)
+        width: Math.min(500, parent.width - 40)
         height: implicitHeight + 23
         padding: 0
         modal: true
@@ -365,23 +436,61 @@ Rectangle {
                 }
             }
 
-            // Job filter (buttons, single row)
+            // Job filter
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Text { text: I18n.t("filter_job_label"); color: Theme.textMuted; font.pixelSize: 11; font.bold: true }
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Text { text: I18n.t("filter_job_label"); color: Theme.textMuted; font.pixelSize: 11; font.bold: true }
+                    Item { Layout.fillWidth: true }
+
+                    Rectangle {
+                        id: newJobFilterBtn
+                        implicitWidth: newJobFilterRow.implicitWidth + 16
+                        implicitHeight: 24
+                        Layout.preferredWidth: implicitWidth
+                        Layout.preferredHeight: implicitHeight
+                        radius: 6
+                        color: newJobFilterMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                        border.color: newJobFilterMouse.containsMouse ? Theme.primaryLight : Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.3)
+                        border.width: 1
+
+                        RowLayout {
+                            id: newJobFilterRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            FaIcon { icon: Icons.plus; size: 9; iconColor: Theme.primaryLight }
+                            Text {
+                                text: I18n.t("new_job_btn")
+                                color: Theme.primaryLight
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        MouseArea {
+                            id: newJobFilterMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                filterPopup.close();
+                                root.createNewJobRequested();
+                            }
+                        }
+                    }
+                }
+
+                // 4 or fewer jobs: standard RowLayout (expanded to full width)
+                RowLayout {
+                    Layout.fillWidth: true
                     spacing: 8
+                    visible: root.getFilterJobOptions().length <= 4
 
                     Repeater {
-                        model: [
-                            { id: "all" },
-                            { id: "architect" },
-                            { id: "graphiste" },
-                            { id: "video maker" }
-                        ]
+                        model: root.getFilterJobOptions().length <= 4 ? root.getFilterJobOptions() : []
 
                         Rectangle {
                             id: jobBtn
@@ -399,7 +508,7 @@ Rectangle {
 
                             Text {
                                 anchors.fill: parent
-                                anchors.margins: 6
+                                anchors.margins: 4
                                 text: root.jobDisplay(modelData.id)
                                 color: jobBtn.selected ? "white" : Theme.textPrimary
                                 font.pixelSize: 11
@@ -411,6 +520,53 @@ Rectangle {
 
                             MouseArea {
                                 id: jobBtnMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.jobFilter = modelData.id;
+                                    root.categoryFilter = "all";
+                                    root.emitFilter();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // More than 4 jobs: wrap in Flow
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: root.getFilterJobOptions().length > 4
+
+                    Repeater {
+                        model: root.getFilterJobOptions().length > 4 ? root.getFilterJobOptions() : []
+
+                        Rectangle {
+                            id: flowJobBtn
+                            implicitWidth: Math.max(90, flowJobText.implicitWidth + 24)
+                            implicitHeight: 34
+                            property bool selected: root.jobFilter === modelData.id
+                            radius: Theme.radiusMd
+                            color: flowJobBtn.selected
+                                ? Theme.primary
+                                : (flowJobMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2) : Theme.surfaceElevated)
+                            border.color: flowJobBtn.selected ? Theme.primaryLight : Theme.border
+                            border.width: 1
+
+                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                            Text {
+                                id: flowJobText
+                                anchors.centerIn: parent
+                                text: root.jobDisplay(modelData.id)
+                                color: flowJobBtn.selected ? "white" : Theme.textPrimary
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: flowJobMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor

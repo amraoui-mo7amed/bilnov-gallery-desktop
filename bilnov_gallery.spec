@@ -54,7 +54,7 @@ icon_icns = str(ROOT_DIR / 'desktop' / 'assets' / 'icon.icns')
 
 if sys.platform == 'win32':
     # 1. Standalone Single-File Executable
-    # Contains Python DLL, PySide6 DLLs, and QML data embedded directly inside olga+.exe
+    # Contains Python DLL, PySide6 DLLs, and QML data embedded directly inside orga+.exe
     exe_standalone = EXE(
         pyz,
         a.scripts,
@@ -62,7 +62,7 @@ if sys.platform == 'win32':
         a.zipfiles,
         a.datas,
         [],
-        name='olga+',
+        name='orga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -78,13 +78,13 @@ if sys.platform == 'win32':
         icon=icon_ico,
     )
 
-    # 2. Portable Directory Distribution (All DLLs alongside olga+.exe)
+    # 2. Portable Directory Distribution (All DLLs alongside orga+.exe)
     exe_dir = EXE(
         pyz,
         a.scripts,
         [],
         exclude_binaries=True,
-        name='olga+',
+        name='orga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -106,7 +106,7 @@ if sys.platform == 'win32':
         strip=False,
         upx=False,
         upx_exclude=[],
-        name='olga+-Portable',
+        name='orga+-Portable',
     )
 
 elif sys.platform == 'darwin':
@@ -115,7 +115,7 @@ elif sys.platform == 'darwin':
         a.scripts,
         [],
         exclude_binaries=True,
-        name='olga+',
+        name='orga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -137,19 +137,19 @@ elif sys.platform == 'darwin':
         strip=False,
         upx=False,
         upx_exclude=[],
-        name='olga+',
+        name='orga+',
     )
 
     app = BUNDLE(
         coll,
-        name='olga+.app',
+        name='orga+.app',
         icon=icon_icns,
-        bundle_identifier='com.olgaplus.app',
+        bundle_identifier='com.orgaplus.app',
         info_plist={
-            'CFBundleName': 'olga+',
-            'CFBundleDisplayName': 'olga+',
-            'CFBundleShortVersionString': '2.0.4',
-            'CFBundleVersion': '2.0.4',
+            'CFBundleName': 'orga+',
+            'CFBundleDisplayName': 'orga+',
+            'CFBundleShortVersionString': '2.0.6',
+            'CFBundleVersion': '2.0.6',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },
@@ -162,7 +162,7 @@ else:
         a.zipfiles,
         a.datas,
         [],
-        name='olga+',
+        name='orga+',
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

@@ -7,9 +7,10 @@ import "."
 
 Rectangle {
     id: root
+    parent: Overlay.overlay
     anchors.fill: parent
     color: "#E6030712"
-    z: 99000
+    z: 99996
     visible: opacity > 0
     opacity: 0
 
@@ -24,10 +25,45 @@ Rectangle {
         { id: "video maker", folder: "Video Maker" }
     ]
 
+    signal createNewJobRequested()
+
+    function getCombinedJobs() {
+        var list = [
+            { id: "architect", folder: "Architect" },
+            { id: "graphiste", folder: "Graphiste" },
+            { id: "video maker", folder: "Video Maker" }
+        ];
+        var extra = Bridge.jobOptions || [];
+        for (var i = 0; i < extra.length; i++) {
+            var ej = extra[i];
+            var exists = false;
+            for (var j = 0; j < list.length; j++) {
+                if (list[j].id.toLowerCase() === (ej.id || "").toLowerCase() || list[j].folder.toLowerCase() === (ej.folder || "").toLowerCase()) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists && ej.id) {
+                list.push({ id: ej.id, folder: ej.folder || ej.name, name: ej.name });
+            }
+        }
+        return list;
+    }
+
+    function refreshJobs() {
+        jobOptions = getCombinedJobs();
+    }
+
     function getJobDisplay(id) {
         if (id === "architect") return I18n.currentLanguage === "fr" ? "Architecte" : "Architect";
         if (id === "graphiste") return "Graphiste";
         if (id === "video maker") return "Video Maker";
+        var jobs = Bridge.jobOptions || [];
+        for (var i = 0; i < jobs.length; i++) {
+            if (jobs[i].id && String(jobs[i].id).toLowerCase() === String(id).toLowerCase()) {
+                return jobs[i].name || id;
+            }
+        }
         return id;
     }
 
@@ -35,6 +71,12 @@ Rectangle {
         if (id === "architect") return "Architect";
         if (id === "graphiste") return "Graphiste";
         if (id === "video maker") return "Video Maker";
+        var jobs = Bridge.jobOptions || [];
+        for (var i = 0; i < jobs.length; i++) {
+            if (jobs[i].id && String(jobs[i].id).toLowerCase() === String(id).toLowerCase()) {
+                return jobs[i].folder || id;
+            }
+        }
         return id || "Architect";
     }
 
@@ -62,9 +104,11 @@ Rectangle {
         images = []
         models = []
         nameInput.text = ""
+        refreshJobs()
         selectedJob = "architect"
         categoryInput.text = ""
         categoryMenu.close()
+        jobMenu.close()
         errorMessage = ""
         isSubmitting = false
         opacity = 1
@@ -138,6 +182,9 @@ Rectangle {
 
     Connections {
         target: Bridge
+        function onJobsChanged() {
+            root.refreshJobs()
+        }
         function onItemAdded(success, msg) {
             if (!root.visible) return
             root.isSubmitting = false
@@ -263,11 +310,41 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 6
 
-                    Text {
-                        text: I18n.t("add_job_label")
-                        color: Theme.textPrimary
-                        font.pixelSize: 12
-                        font.bold: true
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: I18n.t("add_job_label")
+                            color: Theme.textPrimary
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        Rectangle {
+                            id: newJobBtn
+                            implicitWidth: newJobBtnRow.implicitWidth + 16
+                            implicitHeight: 24
+                            Layout.preferredWidth: implicitWidth
+                            Layout.preferredHeight: implicitHeight
+                            radius: 6
+                            color: newJobBtnMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                            border.color: newJobBtnMouse.containsMouse ? Theme.primaryLight : Qt.rgba(Theme.primaryLight.r, Theme.primaryLight.g, Theme.primaryLight.b, 0.3)
+                            border.width: 1
+
+                            RowLayout {
+                                id: newJobBtnRow
+                                anchors.centerIn: parent
+                                spacing: 4
+                                FaIcon { icon: Icons.plus; size: 10; iconColor: Theme.primaryLight }
+                                Text { text: I18n.t("new_job_btn"); color: Theme.primaryLight; font.pixelSize: 11; font.bold: true }
+                            }
+                            MouseArea {
+                                id: newJobBtnMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.createNewJobRequested()
+                            }
+                        }
                     }
 
                     Rectangle {
@@ -354,6 +431,16 @@ Rectangle {
                                         root.selectedJob = modelData.id;
                                     }
                                 }
+                            }
+
+                            MenuSeparator {
+                                contentItem: Rectangle { implicitHeight: 1; color: Theme.border }
+                            }
+
+                            MenuItem {
+                                text: "+ " + I18n.t("new_job_btn")
+                                font.bold: true
+                                onTriggered: root.createNewJobRequested()
                             }
                         }
                     }

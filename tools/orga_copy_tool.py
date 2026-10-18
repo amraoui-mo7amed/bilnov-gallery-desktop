@@ -265,7 +265,7 @@ def select_fit_disk(
 # --------------------------------------------------------------------------
 
 def find_orga_app(custom_path: Optional[str] = None) -> Optional[Path]:
-    """Find the orga+ / olga+ desktop app executable or .app bundle."""
+    """Find the orga+ desktop app executable or .app bundle."""
     if custom_path:
         p = Path(custom_path).resolve()
         if p.exists():
@@ -277,31 +277,31 @@ def find_orga_app(custom_path: Optional[str] = None) -> Optional[Path]:
     candidates = []
     if sys.platform == "darwin":
         candidates.extend([
-            dist_dir / "olga+.app",
             dist_dir / "orga+.app",
-            here / "olga+.app",
+            dist_dir / "olga+.app",
             here / "orga+.app",
-            Path("/Applications/olga+.app"),
+            here / "olga+.app",
             Path("/Applications/orga+.app"),
-            dist_dir / "olga+",
+            Path("/Applications/olga+.app"),
             dist_dir / "orga+",
+            dist_dir / "olga+",
         ])
     elif sys.platform == "win32":
         candidates.extend([
-            dist_dir / "olga+.exe",
             dist_dir / "orga+.exe",
+            dist_dir / "olga+.exe",
             dist_dir / "orga+ Copy Tool.exe",
-            dist_dir / "olga+-Portable",
             dist_dir / "orga+-Portable",
-            here / "olga+.exe",
+            dist_dir / "olga+-Portable",
             here / "orga+.exe",
+            here / "olga+.exe",
         ])
     else:
         candidates.extend([
-            dist_dir / "olga+",
             dist_dir / "orga+",
-            here / "olga+",
+            dist_dir / "olga+",
             here / "orga+",
+            here / "olga+",
         ])
 
     for cand in candidates:

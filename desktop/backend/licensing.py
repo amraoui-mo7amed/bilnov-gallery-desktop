@@ -166,7 +166,7 @@ class LicenseManager:
         self.license_file = Path(license_file or LICENSE_FILE_PATH).expanduser()
         self.device_id = get_deterministic_device_id()
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "OlgaPlus/1.0.0"})
+        self.session.headers.update({"User-Agent": "OrgaPlus/1.0.0"})
 
         self.current_state = LicenseState(device_id=self.device_id)
         self.trial_details: Dict[str, Any] = {}

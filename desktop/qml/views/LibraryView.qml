@@ -20,7 +20,7 @@ Item {
             if (root.currentJob === "architect") return "Architect";
             if (root.currentJob === "graphiste") return "Graphiste";
             if (root.currentJob === "video maker") return "Video Maker";
-            return root.currentJob;
+            return Bridge.getJobFolder ? Bridge.getJobFolder(root.currentJob) : root.currentJob;
         }
         return "all";
     }
