@@ -256,6 +256,7 @@ class TestOrgaPlus(unittest.TestCase):
 
     def test_import_folder_dialog_structure(self):
         import_dialog_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "ImportFolderDialog.qml").read_text(encoding="utf-8")
+        add_item_qml = (ROOT_DIR / "desktop" / "qml" / "components" / "AddItemDialog.qml").read_text(encoding="utf-8")
 
         self.assertIn("signal createNewJobRequested()", import_dialog_qml)
         self.assertIn("browseFolder()", import_dialog_qml)
@@ -263,6 +264,12 @@ class TestOrgaPlus(unittest.TestCase):
         self.assertIn("Bridge.importFolder(", import_dialog_qml)
         self.assertIn("categoryInput", import_dialog_qml)
         self.assertIn("jobSelectBox", import_dialog_qml)
+
+        # Dropdowns must have z: 100005 to render above overlay dialogs (which have z ~99997)
+        self.assertIn("id: jobMenu\n                        z: 100005", import_dialog_qml)
+        self.assertIn("id: categoryMenu\n                        z: 100005", import_dialog_qml)
+        self.assertIn("id: jobMenu\n                            z: 100005", add_item_qml)
+        self.assertIn("id: categoryMenu\n                            z: 100005", add_item_qml)
 
     def test_library_manager_jobs_and_folder_import(self):
         import tempfile

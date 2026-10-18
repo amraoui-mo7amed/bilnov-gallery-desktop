@@ -58,7 +58,7 @@ Rectangle {
         }
     }
 
-    function getJobOptions() {
+    property var jobOptionsList: {
         var base = [
             { id: "architect", name: "Architect", folder: "Architect" },
             { id: "graphiste", name: "Graphiste", folder: "Graphiste" },
@@ -81,18 +81,7 @@ Rectangle {
         return base
     }
 
-    function getJobDisplay(id) {
-        if (id === "architect") return I18n.currentLanguage === "fr" ? "Architecte" : "Architect";
-        if (id === "graphiste") return "Graphiste";
-        if (id === "video maker") return "Video Maker";
-        var jobs = getJobOptions()
-        for (var i = 0; i < jobs.length; i++) {
-            if (jobs[i].id.toLowerCase() === id.toLowerCase()) return jobs[i].name;
-        }
-        return id;
-    }
-
-    function categoryOptions() {
+    property var categoryList: {
         var out = []
         var pre = Bridge.predefinedCategories || []
         for (var i = 0; i < pre.length; i++) {
@@ -105,7 +94,30 @@ Rectangle {
             var n = (typeof c === "object" && c !== null) ? (c.name || c.title || "") : String(c)
             if (n && out.indexOf(n) < 0) out.push(n)
         }
+        if (out.length === 0) {
+            out = ["Architecture", "Furniture", "Decoration", "Lighting", "Materials", "Characters", "Vehicles", "Props"]
+        }
         return out
+    }
+
+    function getJobOptions() {
+        return jobOptionsList
+    }
+
+    function getJobDisplay(id) {
+        if (!id) return "";
+        if (id === "architect") return I18n.currentLanguage === "fr" ? "Architecte" : "Architect";
+        if (id === "graphiste") return "Graphiste";
+        if (id === "video maker") return "Video Maker";
+        var jobs = jobOptionsList
+        for (var i = 0; i < jobs.length; i++) {
+            if (jobs[i].id.toLowerCase() === id.toLowerCase()) return jobs[i].name;
+        }
+        return id;
+    }
+
+    function categoryOptions() {
+        return categoryList
     }
 
     function submit() {
@@ -409,8 +421,10 @@ Rectangle {
 
                     Menu {
                         id: jobMenu
+                        z: 100005
                         y: jobSelectBox.height + 4
                         width: jobSelectBox.width
+                        clip: true
 
                         background: Rectangle {
                             color: Theme.surfaceElevated
@@ -435,7 +449,7 @@ Rectangle {
                         }
 
                         Repeater {
-                            model: root.getJobOptions()
+                            model: root.jobOptionsList
                             MenuItem {
                                 text: root.getJobDisplay(modelData.id)
                                 font.bold: root.selectedJob.toLowerCase() === modelData.id.toLowerCase()
@@ -546,16 +560,18 @@ Rectangle {
                         // Dropdown trigger button
                         Rectangle {
                             id: categoryDropdownBtn
-                            width: 28
-                            height: 28
+                            width: 32
+                            height: 30
                             radius: 6
-                            color: catDropMouse.containsMouse || categoryMenu.visible ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+                            color: catDropMouse.containsMouse || categoryMenu.visible ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(255, 255, 255, 0.05)
+                            border.color: catDropMouse.containsMouse || categoryMenu.visible ? Theme.primaryLight : Qt.rgba(255, 255, 255, 0.1)
+                            border.width: 1
 
                             FaIcon {
                                 anchors.centerIn: parent
                                 icon: Icons.chevronDown
-                                size: 10
-                                iconColor: categoryMenu.visible ? Theme.primaryLight : Theme.textMuted
+                                size: 11
+                                iconColor: categoryMenu.visible ? Theme.primaryLight : Theme.textPrimary
                             }
 
                             MouseArea {
@@ -573,8 +589,10 @@ Rectangle {
 
                     Menu {
                         id: categoryMenu
+                        z: 100005
                         y: categoryBox.height + 4
                         width: categoryBox.width
+                        clip: true
 
                         background: Rectangle {
                             color: Theme.surfaceElevated
@@ -598,8 +616,15 @@ Rectangle {
                             }
                         }
 
+                        MenuItem {
+                            text: (root.categoryList.length > 0)
+                                ? ("— " + I18n.t("choose_category") + " (" + root.categoryList.length + ") —")
+                                : ("— " + I18n.t("no_categories_available") + " —")
+                            enabled: false
+                        }
+
                         Repeater {
-                            model: root.categoryOptions()
+                            model: root.categoryList
                             MenuItem {
                                 text: modelData
                                 font.bold: categoryInput.text.trim().toLowerCase() === String(modelData).toLowerCase()

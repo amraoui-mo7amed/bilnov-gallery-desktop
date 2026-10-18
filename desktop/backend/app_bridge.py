@@ -247,7 +247,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v2.0.6"
+        return "v2.0.7"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)

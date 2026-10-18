@@ -148,8 +148,8 @@ elif sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'orga+',
             'CFBundleDisplayName': 'orga+',
-            'CFBundleShortVersionString': '2.0.6',
-            'CFBundleVersion': '2.0.6',
+            'CFBundleShortVersionString': '2.0.7',
+            'CFBundleVersion': '2.0.7',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },

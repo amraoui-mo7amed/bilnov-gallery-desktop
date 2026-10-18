@@ -95,6 +95,9 @@ Rectangle {
             var n = (typeof c === "object" && c !== null) ? (c.name || c.title || "") : String(c);
             if (n && out.indexOf(n) < 0) out.push(n);
         }
+        if (out.length === 0) {
+            out = ["Architecture", "Furniture", "Decoration", "Lighting", "Materials", "Characters", "Vehicles", "Props"];
+        }
         return out;
     }
 
@@ -397,8 +400,10 @@ Rectangle {
 
                         Menu {
                             id: jobMenu
+                            z: 100005
                             y: jobSelectBox.height + 4
                             width: jobSelectBox.width
+                            clip: true
 
                             background: Rectangle {
                                 color: Theme.surfaceElevated
@@ -563,8 +568,10 @@ Rectangle {
                         // Dropdown menu showing prefilled categories from the storage folder
                         Menu {
                             id: categoryMenu
+                            z: 100005
                             y: categoryBox.height + 4
                             width: categoryBox.width
+                            clip: true
                             background: Rectangle {
                                 color: Theme.surfaceElevated
                                 border.color: Theme.border
