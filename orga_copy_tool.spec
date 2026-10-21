@@ -60,8 +60,8 @@ elif sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'orga+ Copy Tool',
             'CFBundleDisplayName': 'orga+ Copy Tool',
-            'CFBundleShortVersionString': '2.1.0',
-            'CFBundleVersion': '2.1.0',
+            'CFBundleShortVersionString': '2.2.0',
+            'CFBundleVersion': '2.2.0',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },

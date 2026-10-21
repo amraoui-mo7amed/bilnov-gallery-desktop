@@ -1175,6 +1175,64 @@ QListWidget::item:selected, QTableWidget::item:selected, QTreeWidget::item:selec
     color: #FFFFFF;
 }
 
+QListWidget#disksList {
+    background-color: #0E1524;
+    border: 1px solid #26334D;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+QListWidget#disksList::item {
+    padding: 10px 12px;
+    border: 1px solid #1E293B;
+    background-color: #141C2E;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    color: #F8FAFC;
+}
+
+QListWidget#disksList::item:hover {
+    background-color: #1A243B;
+    border-color: #38BDF8;
+}
+
+QListWidget#disksList::item:selected {
+    background-color: #1E2B47;
+    border: 1px solid #6366F1;
+}
+
+QTabWidget::pane {
+    border: 1px solid #26334D;
+    background-color: #0E1524;
+    border-radius: 8px;
+    top: -1px;
+    padding: 12px;
+}
+
+QTabBar::tab {
+    background-color: #161F30;
+    color: #94A3B8;
+    border: 1px solid #26334D;
+    border-bottom: none;
+    padding: 9px 18px;
+    margin-right: 4px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+QTabBar::tab:selected {
+    background-color: #0E1524;
+    color: #F8FAFC;
+    border-top: 2px solid #6366F1;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #1A2438;
+    color: #E2E8F0;
+}
+
 QHeaderView::section {
     background-color: #161F30;
     color: #94A3B8;
@@ -1259,11 +1317,11 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     from PySide6.QtCore import QObject, Qt, QThread, Signal, QUrl
     from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon
     from PySide6.QtWidgets import (
-        QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
+        QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
         QFrame, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
         QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
         QProgressBar, QPushButton, QRadioButton, QSpinBox, QSplitter, QTableWidget,
-        QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+        QTableWidgetItem, QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
     )
 
     class Signals(QObject):
@@ -1314,25 +1372,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             except Exception as e:
                 self.signals.error.emit(str(e))
 
-    app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("orga+ Copy Tool")
-    app.setStyleSheet(MODERN_DARK_QSS)
-
-    win = QWidget()
-    win.setWindowTitle("orga+ Copy Tool — High-Speed Multi-Disk Exporter")
-    win.resize(1260, 880)
-    win.setMinimumSize(1020, 720)
-
-    # Set window icon if available
-    icon_p = Path(__file__).resolve().parent.parent / "desktop" / "assets" / "icon.png"
-    if icon_p.exists():
-        win.setWindowIcon(QIcon(str(icon_p)))
-
-    main_layout = QVBoxLayout(win)
-    main_layout.setContentsMargins(14, 14, 14, 14)
-    main_layout.setSpacing(12)
-
-    # State
+    # Shared State
     ctrl = CopyController()
     signals = Signals()
     state: Dict[str, Any] = {
@@ -1340,30 +1380,497 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         "items": [],
         "volumes": [],
         "app_path": find_orga_app(),
+        "auto_copy_app": True,
+        "unzip_models": True,
+        "skip_existing": True,
+        "models_only": True,
+        "workers": workers,
+        "safety_margin_mb": 500,
+        "mechanism_mode": "storage",
+        "limit_storage_val": 16.0,
+        "limit_storage_unit": "GB",
+        "limit_count_val": 50,
+        "balanced": True,
         "worker": None,
         "updating_table": False,
         "updating_tree": False,
     }
 
     # ----------------------------------------------------------------------
-    # Header Bar
+    # Tabbed Settings Modal Dialog
+    # ----------------------------------------------------------------------
+
+    class SettingsDialog(QDialog):
+        """Spacious modal dialog housing all copy mechanisms, target disks, and preferences."""
+
+        def __init__(self, parent: QWidget) -> None:
+            super().__init__(parent)
+            self.setWindowTitle("⚙️ Preferences, Limits && Target Disks")
+            self.resize(740, 580)
+            self.setMinimumSize(660, 500)
+            self.setStyleSheet(MODERN_DARK_QSS)
+
+            dlg_layout = QVBoxLayout(self)
+            dlg_layout.setContentsMargins(18, 18, 18, 18)
+            dlg_layout.setSpacing(14)
+
+            # Header Banner
+            header_lbl = QLabel("⚙️ Preferences, Limits && Automation Settings")
+            header_lbl.setStyleSheet("font-size: 17px; font-weight: 800; color: #F8FAFC;")
+            subtitle_lbl = QLabel(
+                "Configure selection limits, target destination disks, application bundling, and transfer performance."
+            )
+            subtitle_lbl.setStyleSheet("font-size: 11px; color: #94A3B8;")
+            dlg_layout.addWidget(header_lbl)
+            dlg_layout.addWidget(subtitle_lbl)
+
+            # Tab Widget
+            self.tabs = QTabWidget()
+            dlg_layout.addWidget(self.tabs, 1)
+
+            # --- Tab 0: Copy Mechanism & Limits ---
+            tab_limits = QWidget()
+            tl_layout = QVBoxLayout(tab_limits)
+            tl_layout.setContentsMargins(14, 16, 14, 14)
+            tl_layout.setSpacing(14)
+
+            lim_box = QGroupBox("Copy Mechanism && Selection Rules")
+            lim_box_layout = QVBoxLayout(lim_box)
+            lim_box_layout.setContentsMargins(14, 16, 14, 14)
+            lim_box_layout.setSpacing(10)
+
+            self.mode_group = QButtonGroup(self)
+            self.rb_storage = QRadioButton("By Storage Limit (GB / MB)")
+            self.rb_count = QRadioButton("By Number of Files / Items")
+            self.rb_all = QRadioButton("Select All in Chosen Categories")
+            self.rb_storage.setChecked(True)
+            self.mode_group.addButton(self.rb_storage)
+            self.mode_group.addButton(self.rb_count)
+            self.mode_group.addButton(self.rb_all)
+
+            lim_box_layout.addWidget(self.rb_storage)
+
+            storage_row = QHBoxLayout()
+            storage_row.setContentsMargins(24, 0, 0, 4)
+            self.storage_spin = QDoubleSpinBox()
+            self.storage_spin.setRange(0.1, 100000.0)
+            self.storage_spin.setValue(state.get("limit_storage_val", 16.0))
+            self.storage_spin.setDecimals(1)
+            self.storage_spin.setMinimumWidth(100)
+            self.unit_combo = QComboBox()
+            self.unit_combo.addItems(["GB", "MB"])
+            self.unit_combo.setCurrentText(state.get("limit_storage_unit", "GB"))
+            storage_row.addWidget(QLabel("Limit:"))
+            storage_row.addWidget(self.storage_spin)
+            storage_row.addWidget(self.unit_combo)
+            storage_row.addStretch(1)
+            lim_box_layout.addLayout(storage_row)
+
+            lim_box_layout.addWidget(self.rb_count)
+
+            count_row = QHBoxLayout()
+            count_row.setContentsMargins(24, 0, 0, 4)
+            self.count_spin = QSpinBox()
+            self.count_spin.setRange(1, 100000)
+            self.count_spin.setValue(state.get("limit_count_val", 50))
+            self.count_spin.setMinimumWidth(100)
+            count_row.addWidget(QLabel("Items:"))
+            count_row.addWidget(self.count_spin)
+            count_row.addStretch(1)
+            lim_box_layout.addLayout(count_row)
+
+            lim_box_layout.addWidget(self.rb_all)
+
+            self.balanced_cb = QCheckBox("Distribute evenly across chosen categories (Balanced round-robin)")
+            self.balanced_cb.setChecked(state.get("balanced", True))
+            self.balanced_cb.setStyleSheet("color: #818CF8; font-weight: 600; margin-top: 6px;")
+            balanced_help = QLabel(
+                "Fair-share distribution: cycles through selected categories and subcategories one item at a time until limit is reached."
+            )
+            balanced_help.setStyleSheet("font-size: 11px; color: #94A3B8; margin-left: 26px;")
+            lim_box_layout.addWidget(self.balanced_cb)
+            lim_box_layout.addWidget(balanced_help)
+
+            tl_layout.addWidget(lim_box)
+
+            # Limit Actions
+            lim_act_row = QHBoxLayout()
+            fit_disk_btn = QPushButton("💾 Auto-Fit to Selected Disk Free Space")
+            fit_disk_btn.setObjectName("accentBtn")
+            fit_disk_btn.clicked.connect(self._on_auto_fit)
+            apply_now_btn = QPushButton("⚡ Apply Selection Limit Now")
+            apply_now_btn.setObjectName("primaryBtn")
+            apply_now_btn.clicked.connect(self._on_apply_limit)
+            lim_act_row.addWidget(fit_disk_btn)
+            lim_act_row.addStretch(1)
+            lim_act_row.addWidget(apply_now_btn)
+            tl_layout.addLayout(lim_act_row)
+
+            tl_layout.addStretch(1)
+            self.tabs.addTab(tab_limits, "⚡ Copy Mechanism && Limits")
+
+            # --- Tab 1: Target Disks & Drives ---
+            tab_disks = QWidget()
+            td_layout = QVBoxLayout(tab_disks)
+            td_layout.setContentsMargins(14, 16, 14, 14)
+            td_layout.setSpacing(10)
+
+            disk_header_lbl = QLabel("Select destination flash drives, memory cards, or local output directories:")
+            disk_header_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+            td_layout.addWidget(disk_header_lbl)
+
+            disk_tb = QHBoxLayout()
+            rescan_disks_btn = QPushButton("🔄 Rescan Disks")
+            rescan_disks_btn.clicked.connect(self.refresh_disks)
+            add_disk_btn = QPushButton("➕ Add Folder / Disk…")
+            add_disk_btn.clicked.connect(self._add_custom_disk)
+            sel_all_disks_btn = QPushButton("Select All")
+            sel_all_disks_btn.clicked.connect(lambda: self._set_all_disks(True))
+            clear_disks_btn = QPushButton("Clear All")
+            clear_disks_btn.clicked.connect(lambda: self._set_all_disks(False))
+            disk_tb.addWidget(rescan_disks_btn)
+            disk_tb.addWidget(add_disk_btn)
+            disk_tb.addStretch(1)
+            disk_tb.addWidget(sel_all_disks_btn)
+            disk_tb.addWidget(clear_disks_btn)
+            td_layout.addLayout(disk_tb)
+
+            self.disks_list = QListWidget()
+            self.disks_list.setObjectName("disksList")
+            self.disks_list.setSelectionMode(QListWidget.NoSelection)
+            self.disks_list.itemChanged.connect(lambda *_: self._on_disk_changed())
+            td_layout.addWidget(self.disks_list, 1)
+
+            self.disks_status_lbl = QLabel("No disk selected")
+            self.disks_status_lbl.setStyleSheet("color: #10B981; font-weight: 700; font-size: 12px;")
+            td_layout.addWidget(self.disks_status_lbl)
+
+            self.tabs.addTab(tab_disks, "💾 Target Disks && Drives")
+
+            # --- Tab 2: Application & Model Extraction ---
+            tab_app = QWidget()
+            ta_layout = QVBoxLayout(tab_app)
+            ta_layout.setContentsMargins(14, 16, 14, 14)
+            ta_layout.setSpacing(14)
+
+            app_box = QGroupBox("orga+ Application Distribution")
+            app_box_layout = QVBoxLayout(app_box)
+            app_box_layout.setContentsMargins(12, 14, 12, 12)
+            app_box_layout.setSpacing(8)
+
+            self.auto_app_cb = QCheckBox("Auto-copy orga+ app bundle to destination disk root")
+            self.auto_app_cb.setChecked(state.get("auto_copy_app", True))
+            app_box_layout.addWidget(self.auto_app_cb)
+
+            app_row = QHBoxLayout()
+            app_path = state.get("app_path")
+            self.app_info_lbl = QLabel(f"App: {app_path.name if app_path else 'Not detected'}")
+            self.app_info_lbl.setStyleSheet("font-size: 11px; color: #38BDF8; font-weight: 600;")
+            browse_app_btn = QPushButton("📁 Browse…")
+            browse_app_btn.setMaximumWidth(90)
+            browse_app_btn.clicked.connect(self._browse_app)
+            app_row.addWidget(self.app_info_lbl, 1)
+            app_row.addWidget(browse_app_btn)
+            app_box_layout.addLayout(app_row)
+            ta_layout.addWidget(app_box)
+
+            extract_box = QGroupBox("Model Archive Extraction")
+            extract_box_layout = QVBoxLayout(extract_box)
+            extract_box_layout.setContentsMargins(12, 14, 12, 12)
+            extract_box_layout.setSpacing(6)
+
+            self.unzip_cb = QCheckBox("Unzip 3D model archives (.zip) directly into /model/ directory")
+            self.unzip_cb.setChecked(state.get("unzip_models", True))
+            unzip_help = QLabel(
+                "Strips the root archive folder so 3D model files sit cleanly in /model/, removing the original .zip file."
+            )
+            unzip_help.setStyleSheet("font-size: 11px; color: #94A3B8; margin-left: 26px;")
+            extract_box_layout.addWidget(self.unzip_cb)
+            extract_box_layout.addWidget(unzip_help)
+            ta_layout.addWidget(extract_box)
+
+            ta_layout.addStretch(1)
+            self.tabs.addTab(tab_app, "📦 App && Extraction")
+
+            # --- Tab 3: Performance & Engine ---
+            tab_perf = QWidget()
+            tp_layout = QVBoxLayout(tab_perf)
+            tp_layout.setContentsMargins(14, 16, 14, 14)
+            tp_layout.setSpacing(14)
+
+            perf_box = QGroupBox("Transfer Engine && Safety Buffer")
+            perf_box_layout = QVBoxLayout(perf_box)
+            perf_box_layout.setContentsMargins(12, 14, 12, 12)
+            perf_box_layout.setSpacing(10)
+
+            self.resume_cb = QCheckBox("Fast Resume (Skip files already present on target disks)")
+            self.resume_cb.setChecked(state.get("skip_existing", True))
+            perf_box_layout.addWidget(self.resume_cb)
+
+            workers_row = QHBoxLayout()
+            workers_lbl = QLabel("Parallel copy streams:")
+            self.workers_spin = QSpinBox()
+            self.workers_spin.setRange(1, 8)
+            self.workers_spin.setValue(state.get("workers", workers))
+            workers_help = QLabel("(1 worker recommended for USB flash drives; 2-4 for fast SSDs)")
+            workers_help.setStyleSheet("font-size: 11px; color: #64748B;")
+            workers_row.addWidget(workers_lbl)
+            workers_row.addWidget(self.workers_spin)
+            workers_row.addWidget(workers_help, 1)
+            perf_box_layout.addLayout(workers_row)
+
+            safety_row = QHBoxLayout()
+            safety_lbl = QLabel("Auto-Fit disk safety buffer:")
+            self.safety_spin = QSpinBox()
+            self.safety_spin.setRange(50, 10000)
+            self.safety_spin.setSingleStep(50)
+            self.safety_spin.setValue(state.get("safety_margin_mb", 500))
+            self.safety_spin.setSuffix(" MB")
+            safety_help = QLabel("Reserved free buffer left untouched on target disk")
+            safety_help.setStyleSheet("font-size: 11px; color: #64748B;")
+            safety_row.addWidget(safety_lbl)
+            safety_row.addWidget(self.safety_spin)
+            safety_row.addWidget(safety_help, 1)
+            perf_box_layout.addLayout(safety_row)
+
+            tp_layout.addWidget(perf_box)
+            tp_layout.addStretch(1)
+            self.tabs.addTab(tab_perf, "🚀 Performance && Engine")
+
+            # --- Tab 4: Scanning Rules ---
+            tab_scan = QWidget()
+            ts_layout = QVBoxLayout(tab_scan)
+            ts_layout.setContentsMargins(14, 16, 14, 14)
+            ts_layout.setSpacing(14)
+
+            filter_box = QGroupBox("Library Scanning Rules")
+            filter_box_layout = QVBoxLayout(filter_box)
+            filter_box_layout.setContentsMargins(12, 14, 12, 12)
+            filter_box_layout.setSpacing(6)
+
+            self.models_only_cb = QCheckBox("Only display and export assets containing 3D models")
+            self.models_only_cb.setChecked(state.get("models_only", True))
+            models_help = QLabel("When unchecked, preview-only folders with images are also shown and exported.")
+            models_help.setStyleSheet("font-size: 11px; color: #94A3B8; margin-left: 26px;")
+            filter_box_layout.addWidget(self.models_only_cb)
+            filter_box_layout.addWidget(models_help)
+            ts_layout.addWidget(filter_box)
+
+            ts_layout.addStretch(1)
+            self.tabs.addTab(tab_scan, "🔍 Scanning Rules")
+
+            # Bottom Action Buttons
+            btn_box = QHBoxLayout()
+            reset_btn = QPushButton("Reset to Defaults")
+            reset_btn.clicked.connect(self._reset_defaults)
+            done_btn = QPushButton("Save && Close")
+            done_btn.setObjectName("primaryBtn")
+            done_btn.clicked.connect(self.accept)
+            btn_box.addWidget(reset_btn)
+            btn_box.addStretch(1)
+            btn_box.addWidget(done_btn)
+            dlg_layout.addLayout(btn_box)
+
+        def open_tab(self, index: int) -> None:
+            self.tabs.setCurrentIndex(index)
+            self.exec()
+
+        def refresh_disks(self) -> None:
+            self.disks_list.blockSignals(True)
+            self.disks_list.clear()
+            vols = list_volumes()
+            state["volumes"] = vols
+
+            for v in vols:
+                drive_type = "Removable Disk" if v.is_removable else "Local / Fixed Drive"
+                used_pct = ((v.total - v.free) / v.total * 100) if v.total > 0 else 0
+                text = (
+                    f"💾  {v.label}   [{drive_type}]\n"
+                    f"    Path: {v.path}\n"
+                    f"    Space: {human_size(v.free)} free  /  {human_size(v.total)} total  ({used_pct:.1f}% used)"
+                )
+                item = QListWidgetItem(text)
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                item.setCheckState(Qt.Checked if v.is_removable else Qt.Unchecked)
+                item.setData(Qt.UserRole, v)
+                item.setToolTip(v.path)
+                self.disks_list.addItem(item)
+
+            if not vols:
+                item = QListWidgetItem("⚠️ No removable drives detected. Click 'Add Folder / Disk…' to choose a destination.")
+                item.setFlags(Qt.NoItemFlags)
+                self.disks_list.addItem(item)
+
+            self.disks_list.blockSignals(False)
+            self.update_disks_status()
+
+        def _add_custom_disk(self) -> None:
+            d = QFileDialog.getExistingDirectory(self, "Choose Destination Disk or Folder")
+            if d:
+                p = str(Path(d).resolve())
+                try:
+                    u = shutil.disk_usage(p)
+                    v = VolumeInfo(Path(p).name or p, p, u.free, u.total, True)
+                    drive_type = "Custom Destination Folder"
+                    used_pct = ((v.total - v.free) / v.total * 100) if v.total > 0 else 0
+                    text = (
+                        f"📁  {v.label}   [{drive_type}]\n"
+                        f"    Path: {v.path}\n"
+                        f"    Space: {human_size(v.free)} free  /  {human_size(v.total)} total  ({used_pct:.1f}% used)"
+                    )
+                    item = QListWidgetItem(text)
+                    item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                    item.setCheckState(Qt.Checked)
+                    item.setData(Qt.UserRole, v)
+                    item.setToolTip(v.path)
+                    self.disks_list.addItem(item)
+                    self.update_disks_status()
+                    log_msg(f"Added custom destination: {p}")
+                except OSError as e:
+                    QMessageBox.warning(self, "Error", f"Could not access {p}: {e}")
+
+        def _set_all_disks(self, checked: bool) -> None:
+            self.disks_list.blockSignals(True)
+            for i in range(self.disks_list.count()):
+                it = self.disks_list.item(i)
+                if it.flags() & Qt.ItemIsUserCheckable:
+                    it.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+            self.disks_list.blockSignals(False)
+            self.update_disks_status()
+
+        def _on_disk_changed(self) -> None:
+            self.update_disks_status()
+
+        def get_selected_disks(self) -> List[VolumeInfo]:
+            chosen: List[VolumeInfo] = []
+            for i in range(self.disks_list.count()):
+                item = self.disks_list.item(i)
+                if item.checkState() == Qt.Checked:
+                    data = item.data(Qt.UserRole)
+                    if data and isinstance(data, VolumeInfo):
+                        chosen.append(data)
+            return chosen
+
+        def update_disks_status(self) -> None:
+            chosen = self.get_selected_disks()
+            if not chosen:
+                self.disks_status_lbl.setText("⚠️ No target disk selected.")
+                self.disks_status_lbl.setStyleSheet("color: #F59E0B; font-weight: 700; font-size: 12px;")
+            else:
+                free_caps = [f"{v.label}: {human_size(v.free)}" for v in chosen]
+                self.disks_status_lbl.setText(f"✓ {len(chosen)} disk(s) selected: " + " | ".join(free_caps))
+                self.disks_status_lbl.setStyleSheet("color: #10B981; font-weight: 700; font-size: 12px;")
+            update_pills()
+            update_selection_summary()
+
+        def get_mechanism_mode(self) -> str:
+            if self.rb_count.isChecked():
+                return "count"
+            elif self.rb_storage.isChecked():
+                return "storage"
+            return "all"
+
+        def _on_auto_fit(self) -> None:
+            apply_fit_disk()
+
+        def _on_apply_limit(self) -> None:
+            self._save_state()
+            apply_selection_limit()
+
+        def _browse_app(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(self, "Select orga+ Application", str(Path.cwd()))
+            if not path:
+                path = QFileDialog.getExistingDirectory(self, "Select orga+ .app Bundle")
+            if path:
+                state["app_path"] = Path(path).resolve()
+                self.app_info_lbl.setText(f"App: {state['app_path'].name}")
+                update_selection_summary()
+
+        def _reset_defaults(self) -> None:
+            self.rb_storage.setChecked(True)
+            self.storage_spin.setValue(16.0)
+            self.unit_combo.setCurrentText("GB")
+            self.count_spin.setValue(50)
+            self.balanced_cb.setChecked(True)
+            self.auto_app_cb.setChecked(True)
+            self.unzip_cb.setChecked(True)
+            self.resume_cb.setChecked(True)
+            self.workers_spin.setValue(1)
+            self.safety_spin.setValue(500)
+            self.models_only_cb.setChecked(True)
+
+        def _save_state(self) -> None:
+            state["mechanism_mode"] = self.get_mechanism_mode()
+            state["limit_storage_val"] = self.storage_spin.value()
+            state["limit_storage_unit"] = self.unit_combo.currentText()
+            state["limit_count_val"] = self.count_spin.value()
+            state["balanced"] = self.balanced_cb.isChecked()
+            state["auto_copy_app"] = self.auto_app_cb.isChecked()
+            state["unzip_models"] = self.unzip_cb.isChecked()
+            state["skip_existing"] = self.resume_cb.isChecked()
+            state["workers"] = self.workers_spin.value()
+            state["safety_margin_mb"] = self.safety_spin.value()
+            state["models_only"] = self.models_only_cb.isChecked()
+
+        def accept(self) -> None:
+            prev_models_only = state.get("models_only", True)
+            self._save_state()
+            super().accept()
+            update_pills()
+            update_selection_summary()
+            if prev_models_only != state["models_only"]:
+                load_library(state["source"])
+            log_msg("Preferences and automation settings updated.")
+
+    # ----------------------------------------------------------------------
+    # Main Window Setup
+    # ----------------------------------------------------------------------
+    app = QApplication.instance() or QApplication(sys.argv)
+    app.setApplicationName("orga+ Copy Tool")
+    app.setStyleSheet(MODERN_DARK_QSS)
+
+    win = QWidget()
+    win.setWindowTitle("orga+ Copy Tool — High-Speed Multi-Disk Exporter")
+    win.resize(1280, 880)
+    win.setMinimumSize(1040, 720)
+
+    icon_p = Path(__file__).resolve().parent.parent / "desktop" / "assets" / "icon.png"
+    if icon_p.exists():
+        win.setWindowIcon(QIcon(str(icon_p)))
+
+    main_layout = QVBoxLayout(win)
+    main_layout.setContentsMargins(14, 14, 14, 14)
+    main_layout.setSpacing(10)
+
+    # ----------------------------------------------------------------------
+    # 1. Top Header Bar
     # ----------------------------------------------------------------------
     header_frame = QFrame()
-    header_frame.setStyleSheet("background-color: #111827; border-radius: 10px; border: 1px solid #26334D; padding: 6px;")
+    header_frame.setObjectName("headerFrame")
+    header_frame.setStyleSheet("""
+        QFrame#headerFrame {
+            background-color: #111827;
+            border: 1px solid #26334D;
+            border-radius: 10px;
+        }
+    """)
     header_layout = QHBoxLayout(header_frame)
-    header_layout.setContentsMargins(12, 6, 12, 6)
+    header_layout.setContentsMargins(14, 10, 14, 10)
+    header_layout.setSpacing(12)
 
     title_box = QVBoxLayout()
+    title_box.setSpacing(2)
     title_row = QHBoxLayout()
+    title_row.setSpacing(8)
     title_lbl = QLabel("orga+ Copy Tool")
     title_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #F8FAFC;")
-    badge_lbl = QLabel("v2.0 Enhanced")
-    badge_lbl.setStyleSheet("background-color: #312E81; color: #818CF8; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;")
+    badge_lbl = QLabel("v2.2 Enhanced")
+    badge_lbl.setStyleSheet("background-color: #312E81; color: #818CF8; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700;")
     title_row.addWidget(title_lbl)
     title_row.addWidget(badge_lbl)
     title_row.addStretch(1)
 
-    subtitle_lbl = QLabel("High-Speed Library Exporter & Smart Drive Provisioner")
+    subtitle_lbl = QLabel("High-Speed Library Exporter && Smart Drive Provisioner")
     subtitle_lbl.setStyleSheet("font-size: 11px; color: #818CF8; font-weight: 600;")
     title_box.addLayout(title_row)
     title_box.addWidget(subtitle_lbl)
@@ -1371,211 +1878,144 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
 
     header_layout.addStretch(1)
 
-    lib_lbl = QLabel("Library:")
-    lib_lbl.setStyleSheet("color: #94A3B8; font-weight: 600;")
-    header_layout.addWidget(lib_lbl)
-
-    src_display = QLabel(state["source"])
-    src_display.setStyleSheet("font-weight: 600; color: #38BDF8; background-color: #161F30; padding: 5px 12px; border-radius: 6px; border: 1px solid #26334D;")
-    header_layout.addWidget(src_display)
-
-    change_src_btn = QPushButton("📁 Change…")
-    header_layout.addWidget(change_src_btn)
-
-    rescan_btn = QPushButton("🔄 Rescan")
-    header_layout.addWidget(rescan_btn)
+    settings_btn = QPushButton("⚙️ Settings && Mechanisms…")
+    settings_btn.setObjectName("accentBtn")
+    settings_btn.setToolTip("Configure copy mechanism, target disks, app bundling, and transfer rules")
+    settings_btn.clicked.connect(lambda: _open_settings(0))
+    header_layout.addWidget(settings_btn)
 
     main_layout.addWidget(header_frame)
 
     # ----------------------------------------------------------------------
-    # Splitter: Left Sidebar (Disks, Mechanism, Options) | Right (Categories + Table)
+    # 2. Sleek Unified Location Bar
+    # ----------------------------------------------------------------------
+    loc_frame = QFrame()
+    loc_frame.setObjectName("locationBar")
+    loc_frame.setStyleSheet("""
+        QFrame#locationBar {
+            background-color: #0E1524;
+            border: 1px solid #26334D;
+            border-radius: 8px;
+        }
+    """)
+    loc_layout = QHBoxLayout(loc_frame)
+    loc_layout.setContentsMargins(12, 6, 8, 6)
+    loc_layout.setSpacing(10)
+
+    loc_icon_lbl = QLabel("📂 Source Library:")
+    loc_icon_lbl.setStyleSheet("font-weight: 700; color: #94A3B8; font-size: 12px;")
+    loc_layout.addWidget(loc_icon_lbl)
+
+    src_display = QLabel(state["source"])
+    src_display.setStyleSheet("font-weight: 600; color: #38BDF8; font-family: monospace; font-size: 12px;")
+    src_display.setToolTip(state["source"])
+    loc_layout.addWidget(src_display, 1)
+
+    change_src_btn = QPushButton("📁 Change Folder…")
+    change_src_btn.setStyleSheet("padding: 5px 12px; font-size: 12px;")
+    loc_layout.addWidget(change_src_btn)
+
+    rescan_btn = QPushButton("🔄 Rescan")
+    rescan_btn.setStyleSheet("padding: 5px 12px; font-size: 12px;")
+    loc_layout.addWidget(rescan_btn)
+
+    main_layout.addWidget(loc_frame)
+
+    # ----------------------------------------------------------------------
+    # 3. Quick Status & Configuration Pill Bar
+    # ----------------------------------------------------------------------
+    pill_frame = QFrame()
+    pill_frame.setObjectName("pillBar")
+    pill_frame.setStyleSheet("""
+        QFrame#pillBar {
+            background-color: #111827;
+            border: 1px solid #1E293B;
+            border-radius: 8px;
+        }
+    """)
+    pill_layout = QHBoxLayout(pill_frame)
+    pill_layout.setContentsMargins(12, 6, 12, 6)
+    pill_layout.setSpacing(12)
+
+    disk_pill_lbl = QLabel("💾 Target: Loading…")
+    disk_pill_lbl.setStyleSheet("color: #10B981; font-weight: 700; font-size: 12px;")
+    manage_disks_btn = QPushButton("Manage Disks…")
+    manage_disks_btn.setStyleSheet("padding: 3px 8px; font-size: 11px;")
+    manage_disks_btn.clicked.connect(lambda: _open_settings(1))
+
+    pill_layout.addWidget(disk_pill_lbl)
+    pill_layout.addWidget(manage_disks_btn)
+
+    pill_div1 = QFrame()
+    pill_div1.setFrameShape(QFrame.VLine)
+    pill_div1.setStyleSheet("color: #26334D;")
+    pill_layout.addWidget(pill_div1)
+
+    mode_pill_lbl = QLabel("⚡ Limit: 16.0 GB (Balanced)")
+    mode_pill_lbl.setStyleSheet("color: #818CF8; font-weight: 700; font-size: 12px;")
+    change_mode_btn = QPushButton("Change Limit…")
+    change_mode_btn.setStyleSheet("padding: 3px 8px; font-size: 11px;")
+    change_mode_btn.clicked.connect(lambda: _open_settings(0))
+
+    quick_apply_btn = QPushButton("⚡ Apply Limit")
+    quick_apply_btn.setObjectName("primaryBtn")
+    quick_apply_btn.setStyleSheet("padding: 3px 10px; font-size: 11px; font-weight: 700;")
+    quick_apply_btn.clicked.connect(lambda: apply_selection_limit())
+
+    pill_layout.addWidget(mode_pill_lbl)
+    pill_layout.addWidget(change_mode_btn)
+    pill_layout.addWidget(quick_apply_btn)
+
+    pill_layout.addStretch(1)
+
+    main_layout.addWidget(pill_frame)
+
+    # ----------------------------------------------------------------------
+    # 4. Main Two-Column Workspace (Categories Tree | Items & Metrics)
     # ----------------------------------------------------------------------
     splitter = QSplitter(Qt.Horizontal)
 
-    # ========================== LEFT PANEL ===============================
+    # ========================== LEFT PANEL (Tree) ========================
     left_panel = QWidget()
     left_layout = QVBoxLayout(left_panel)
-    left_layout.setContentsMargins(0, 0, 8, 0)
-    left_layout.setSpacing(10)
+    left_layout.setContentsMargins(0, 0, 6, 0)
+    left_layout.setSpacing(8)
 
-    # 1. Target Disks Card
-    disks_group = QGroupBox("1. Choose Target Disks")
-    disks_layout = QVBoxLayout(disks_group)
-    disks_layout.setContentsMargins(10, 14, 10, 10)
-    disks_layout.setSpacing(8)
-
-    disks_ctrl_row = QHBoxLayout()
-    refresh_disks_btn = QPushButton("🔄 Refresh")
-    add_disk_btn = QPushButton("➕ Add Folder/Disk…")
-    select_all_disks_btn = QPushButton("All")
-    disks_ctrl_row.addWidget(refresh_disks_btn)
-    disks_ctrl_row.addWidget(add_disk_btn)
-    disks_ctrl_row.addWidget(select_all_disks_btn)
-    disks_layout.addLayout(disks_ctrl_row)
-
-    disks_list = QListWidget()
-    disks_list.setMaximumHeight(130)
-    disks_layout.addWidget(disks_list)
-
-    disks_status_lbl = QLabel("No disk selected")
-    disks_status_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
-    disks_layout.addWidget(disks_status_lbl)
-
-    left_layout.addWidget(disks_group)
-
-    # 2. Copy Mechanism & Selection Limits Card
-    mechanism_group = QGroupBox("2. Copy Mechanism & Limits")
-    mechanism_layout = QVBoxLayout(mechanism_group)
-    mechanism_layout.setContentsMargins(10, 14, 10, 10)
-    mechanism_layout.setSpacing(10)
-
-    mode_btn_group = QButtonGroup(win)
-    rb_storage = QRadioButton("By Storage Limit (GB / MB)")
-    rb_count = QRadioButton("By Number of Files / Items")
-    rb_all = QRadioButton("Select All in Chosen Categories")
-    rb_storage.setChecked(True)
-    mode_btn_group.addButton(rb_storage)
-    mode_btn_group.addButton(rb_count)
-    mode_btn_group.addButton(rb_all)
-
-    mechanism_layout.addWidget(rb_storage)
-
-    # Storage limit inputs row
-    storage_input_row = QHBoxLayout()
-    storage_input_row.setContentsMargins(16, 0, 0, 4)
-    storage_spin = QDoubleSpinBox()
-    storage_spin.setRange(0.1, 100000.0)
-    storage_spin.setValue(16.0)
-    storage_spin.setDecimals(1)
-    unit_combo = QComboBox()
-    unit_combo.addItems(["GB", "MB"])
-    storage_input_row.addWidget(QLabel("Limit:"))
-    storage_input_row.addWidget(storage_spin, 1)
-    storage_input_row.addWidget(unit_combo)
-    mechanism_layout.addLayout(storage_input_row)
-
-    mechanism_layout.addWidget(rb_count)
-
-    # Count limit inputs row
-    count_input_row = QHBoxLayout()
-    count_input_row.setContentsMargins(16, 0, 0, 4)
-    count_spin = QSpinBox()
-    count_spin.setRange(1, 100000)
-    count_spin.setValue(50)
-    count_input_row.addWidget(QLabel("Items:"))
-    count_input_row.addWidget(count_spin, 1)
-    mechanism_layout.addLayout(count_input_row)
-
-    mechanism_layout.addWidget(rb_all)
-
-    # Balanced distribution option
-    balanced_cb = QCheckBox("Distribute evenly across chosen categories")
-    balanced_cb.setChecked(True)
-    balanced_cb.setToolTip(
-        "Cycles through each selected category/subcategory taking items round-robin until the target limit is reached."
-    )
-    balanced_cb.setStyleSheet("color: #818CF8; font-weight: 600;")
-    mechanism_layout.addWidget(balanced_cb)
-
-    # Action buttons
-    limit_action_row = QHBoxLayout()
-    apply_limit_btn = QPushButton("⚡ Apply Selection Limit")
-    apply_limit_btn.setObjectName("primaryBtn")
-    limit_action_row.addWidget(apply_limit_btn)
-    mechanism_layout.addLayout(limit_action_row)
-
-    fit_disk_btn = QPushButton("💾 Auto-Fit to Smallest Selected Disk")
-    fit_disk_btn.setObjectName("accentBtn")
-    mechanism_layout.addWidget(fit_disk_btn)
-
-    left_layout.addWidget(mechanism_group)
-
-    # 3. Automation & Export Settings Card
-    options_group = QGroupBox("3. Automation & Settings")
-    options_layout = QVBoxLayout(options_group)
-    options_layout.setContentsMargins(10, 14, 10, 10)
-    options_layout.setSpacing(6)
-
-    # Auto copy app
-    auto_app_cb = QCheckBox("Auto-copy orga+ app to disk root")
-    auto_app_cb.setChecked(True)
-    options_layout.addWidget(auto_app_cb)
-
-    app_info_row = QHBoxLayout()
-    app_info_lbl = QLabel(
-        f"App: {state['app_path'].name if state['app_path'] else 'Not detected'}"
-    )
-    app_info_lbl.setStyleSheet("font-size: 11px; color: #94A3B8;")
-    change_app_btn = QPushButton("Browse…")
-    change_app_btn.setMaximumWidth(75)
-    app_info_row.addWidget(app_info_lbl, 1)
-    app_info_row.addWidget(change_app_btn)
-    options_layout.addLayout(app_info_row)
-
-    # Unzip model archives
-    unzip_cb = QCheckBox("Unzip model into /model/ dir (remove .zip)")
-    unzip_cb.setChecked(True)
-    options_layout.addWidget(unzip_cb)
-
-    # Resume support
-    resume_cb = QCheckBox("Skip identical files (Fast Resume)")
-    resume_cb.setChecked(True)
-    options_layout.addWidget(resume_cb)
-
-    # Only assets containing models filter toggle
-    models_only_cb = QCheckBox("Only items with 3D models (.skp, .rar, .zip)")
-    models_only_cb.setChecked(True)
-    options_layout.addWidget(models_only_cb)
-
-    # Streams
-    stream_row = QHBoxLayout()
-    stream_row.addWidget(QLabel("Parallel copy streams:"))
-    workers_spin = QSpinBox()
-    workers_spin.setRange(1, 8)
-    workers_spin.setValue(workers)
-    stream_row.addWidget(workers_spin)
-    stream_row.addStretch(1)
-    options_layout.addLayout(stream_row)
-
-    left_layout.addWidget(options_group)
-    left_layout.addStretch(1)
-    splitter.addWidget(left_panel)
-
-    # ========================== RIGHT PANEL ==============================
-    right_panel = QWidget()
-    right_layout = QVBoxLayout(right_panel)
-    right_layout.setContentsMargins(6, 0, 0, 0)
-    right_layout.setSpacing(8)
-
-    # Section A: Categories & Subcategories Tree Selector
-    cat_group = QGroupBox("Categories & Subcategories to Include")
+    cat_group = QGroupBox("Categories && Subcategories to Include")
     cat_layout = QVBoxLayout(cat_group)
-    cat_layout.setContentsMargins(10, 14, 10, 8)
-    cat_layout.setSpacing(6)
+    cat_layout.setContentsMargins(10, 14, 10, 10)
+    cat_layout.setSpacing(8)
 
     cat_toolbar = QHBoxLayout()
-    cat_lbl = QLabel("Check categories & subcategories to include in the export:")
-    cat_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
     sel_all_cats_btn = QPushButton("Select All")
     sel_none_cats_btn = QPushButton("Clear All")
     expand_cats_btn = QPushButton("Expand All")
-    cat_toolbar.addWidget(cat_lbl, 1)
     cat_toolbar.addWidget(sel_all_cats_btn)
     cat_toolbar.addWidget(sel_none_cats_btn)
     cat_toolbar.addWidget(expand_cats_btn)
     cat_layout.addLayout(cat_toolbar)
 
     category_tree = QTreeWidget()
-    category_tree.setHeaderLabels(["Category / Subcategory", "Items & Size"])
+    category_tree.setHeaderLabels(["Category / Subcategory", "Items && Size"])
     category_tree.setColumnCount(2)
     category_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
     category_tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-    category_tree.setMaximumHeight(160)
-    cat_layout.addWidget(category_tree)
+    cat_layout.addWidget(category_tree, 1)
 
-    right_layout.addWidget(cat_group)
+    cat_hint_lbl = QLabel("Uncheck categories or subcategories to exclude them from the export.")
+    cat_hint_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
+    cat_layout.addWidget(cat_hint_lbl)
 
-    # Section B: Prominent Current Size of Selected Objects Metric Banner
+    left_layout.addWidget(cat_group, 1)
+    splitter.addWidget(left_panel)
+
+    # ========================== RIGHT PANEL (Table) ======================
+    right_panel = QWidget()
+    right_layout = QVBoxLayout(right_panel)
+    right_layout.setContentsMargins(6, 0, 0, 0)
+    right_layout.setSpacing(8)
+
+    # Prominent Metric Banner
     summary_frame = QFrame()
     summary_frame.setStyleSheet("""
         QFrame#summaryBanner {
@@ -1604,7 +2044,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     div1.setStyleSheet("color: #26334D;")
     summary_layout.addWidget(div1)
 
-    # Metric 2: Current Size of Selected Objects
+    # Metric 2: Current Size
     size_block = QVBoxLayout()
     size_title = QLabel("CURRENT SIZE OF SELECTED OBJECTS")
     size_title.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
@@ -1623,7 +2063,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     disk_block = QVBoxLayout()
     disk_title = QLabel("TARGET DISK CAPACITY STATUS")
     disk_title.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
-    disk_val_lbl = QLabel("Select a target disk")
+    disk_val_lbl = QLabel("Select a target disk in Settings")
     disk_val_lbl.setStyleSheet("color: #10B981; font-size: 14px; font-weight: 700;")
     disk_block.addWidget(disk_title)
     disk_block.addWidget(disk_val_lbl)
@@ -1632,7 +2072,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     summary_layout.addStretch(1)
     right_layout.addWidget(summary_frame)
 
-    # Section C: Items Table
+    # Search & Filter Bar
     table_filter_row = QHBoxLayout()
     search_input = QLineEdit()
     search_input.setPlaceholderText("🔍 Search by title, subcategory, format…")
@@ -1651,6 +2091,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     table_filter_row.addWidget(invert_sel_btn)
     right_layout.addLayout(table_filter_row)
 
+    # Items Table
     items_table = QTableWidget()
     items_table.setColumnCount(7)
     items_table.setHorizontalHeaderLabels([
@@ -1669,17 +2110,18 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     right_layout.addWidget(items_table, 1)
 
     splitter.addWidget(right_panel)
+    splitter.setSizes([380, 880])
     splitter.setStretchFactor(0, 0)
     splitter.setStretchFactor(1, 1)
     main_layout.addWidget(splitter, 1)
 
     # ----------------------------------------------------------------------
-    # Bottom Progress & Controls Section
+    # 5. Bottom Progress & Controls Section
     # ----------------------------------------------------------------------
     bottom_group = QFrame()
-    bottom_group.setStyleSheet("background-color: #111827; border: 1px solid #26334D; border-radius: 10px; padding: 10px;")
+    bottom_group.setStyleSheet("background-color: #111827; border: 1px solid #26334D; border-radius: 10px; padding: 8px;")
     bottom_layout = QVBoxLayout(bottom_group)
-    bottom_layout.setContentsMargins(12, 10, 12, 10)
+    bottom_layout.setContentsMargins(12, 8, 12, 8)
     bottom_layout.setSpacing(8)
 
     status_row = QHBoxLayout()
@@ -1700,21 +2142,21 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     btn_row = QHBoxLayout()
     start_btn = QPushButton("▶ Start Copy to Disks")
     start_btn.setObjectName("primaryBtn")
-    start_btn.setMinimumHeight(40)
+    start_btn.setMinimumHeight(38)
     start_btn.setMinimumWidth(180)
 
     pause_btn = QPushButton("⏸ Pause")
     pause_btn.setObjectName("pauseBtn")
-    pause_btn.setMinimumHeight(40)
+    pause_btn.setMinimumHeight(38)
     pause_btn.setEnabled(False)
 
     stop_btn = QPushButton("⏹ Stop")
     stop_btn.setObjectName("stopBtn")
-    stop_btn.setMinimumHeight(40)
+    stop_btn.setMinimumHeight(38)
     stop_btn.setEnabled(False)
 
     toggle_log_btn = QPushButton("📋 Activity Log")
-    toggle_log_btn.setMinimumHeight(40)
+    toggle_log_btn.setMinimumHeight(38)
 
     btn_row.addWidget(start_btn)
     btn_row.addWidget(pause_btn)
@@ -1736,49 +2178,37 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     # Helper Functions & UI Logic
     # ----------------------------------------------------------------------
 
+    settings_dlg: Any = None
+
     def log_msg(msg: str) -> None:
         ts = datetime.datetime.now().strftime("%H:%M:%S")
         log_view.appendPlainText(f"[{ts}] {msg}")
 
-    def get_selected_disks() -> List[VolumeInfo]:
-        chosen: List[VolumeInfo] = []
-        for i in range(disks_list.count()):
-            item = disks_list.item(i)
-            if item.checkState() == Qt.Checked:
-                data = item.data(Qt.UserRole)
-                if data:
-                    chosen.append(data)
-        return chosen
-
-    def refresh_disks() -> None:
-        disks_list.clear()
-        vols = list_volumes()
-        state["volumes"] = vols
-
-        for v in vols:
-            item = QListWidgetItem(f"💾 {v.label}  ({v.path})  —  {human_size(v.free)} free / {human_size(v.total)}")
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            item.setCheckState(Qt.Checked if v.is_removable else Qt.Unchecked)
-            item.setData(Qt.UserRole, v)
-            disks_list.addItem(item)
-
-        if not vols:
-            item = QListWidgetItem("No removable volumes detected. Click 'Add Folder/Disk…'")
-            item.setFlags(Qt.NoItemFlags)
-            disks_list.addItem(item)
-
-        update_disks_status()
-
-    def update_disks_status() -> None:
-        chosen = get_selected_disks()
+    def update_pills() -> None:
+        chosen = settings_dlg.get_selected_disks()
         if not chosen:
-            disks_status_lbl.setText("⚠️ No target disk selected.")
-            disks_status_lbl.setStyleSheet("color: #F59E0B; font-weight: 600;")
+            disk_pill_lbl.setText("💾 Target: ⚠️ None Selected")
+            disk_pill_lbl.setStyleSheet("color: #F59E0B; font-weight: 700; font-size: 12px;")
+        elif len(chosen) == 1:
+            d = chosen[0]
+            disk_pill_lbl.setText(f"💾 Target: {d.label} ({human_size(d.free)} free)")
+            disk_pill_lbl.setStyleSheet("color: #10B981; font-weight: 700; font-size: 12px;")
         else:
-            free_caps = [f"{v.label}: {human_size(v.free)}" for v in chosen]
-            disks_status_lbl.setText(f"{len(chosen)} disk(s) selected: " + " | ".join(free_caps))
-            disks_status_lbl.setStyleSheet("color: #10B981; font-weight: 600;")
-        update_selection_summary()
+            disk_pill_lbl.setText(f"💾 Target: {len(chosen)} Disks Selected")
+            disk_pill_lbl.setStyleSheet("color: #10B981; font-weight: 700; font-size: 12px;")
+
+        mode = settings_dlg.get_mechanism_mode()
+        if mode == "storage":
+            val = settings_dlg.storage_spin.value()
+            unit = settings_dlg.unit_combo.currentText()
+            bal = " (Balanced)" if settings_dlg.balanced_cb.isChecked() else ""
+            mode_pill_lbl.setText(f"⚡ Limit: {val:.1f} {unit}{bal}")
+        elif mode == "count":
+            cnt = settings_dlg.count_spin.value()
+            bal = " (Balanced)" if settings_dlg.balanced_cb.isChecked() else ""
+            mode_pill_lbl.setText(f"⚡ Limit: {cnt} Items{bal}")
+        else:
+            mode_pill_lbl.setText("⚡ Mode: All in Chosen Categories")
 
     def get_checked_subcategories() -> Set[Tuple[str, str]]:
         checked: Set[Tuple[str, str]] = set()
@@ -1805,7 +2235,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     def update_selection_summary() -> None:
         selected = get_selected_items()
         total_bytes = sum(it.total_bytes for it in selected)
-        app_size = get_app_size(state["app_path"]) if (auto_app_cb.isChecked() and state["app_path"]) else 0
+        app_size = get_app_size(state["app_path"]) if (state.get("auto_copy_app", True) and state["app_path"]) else 0
         grand_total = total_bytes + app_size
 
         count_val_lbl.setText(f"{len(selected)} items  (of {len(state['items'])})")
@@ -1813,9 +2243,9 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             f"{human_size(total_bytes)}" + (f" + {human_size(app_size)} App" if app_size else "")
         )
 
-        chosen_disks = get_selected_disks()
+        chosen_disks = settings_dlg.get_selected_disks()
         if not chosen_disks:
-            disk_val_lbl.setText("Select target disk")
+            disk_val_lbl.setText("⚠️ Select target disk in Settings")
             disk_val_lbl.setStyleSheet("color: #F59E0B; font-size: 14px; font-weight: 700;")
             return
 
@@ -1903,41 +2333,34 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         items_table.setRowCount(len(state["items"]))
 
         for r, it in enumerate(state["items"]):
-            # Checkbox col
             cb_item = QTableWidgetItem()
             cb_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             cb_item.setCheckState(Qt.Checked)
             cb_item.setData(Qt.UserRole, it)
             items_table.setItem(r, 0, cb_item)
 
-            # Category
             c_item = QTableWidgetItem(it.job)
             c_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             items_table.setItem(r, 1, c_item)
 
-            # Subcategory
             sub_item = QTableWidgetItem(it.category)
             sub_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             items_table.setItem(r, 2, sub_item)
 
-            # Title
             t_item = QTableWidgetItem(it.title)
             t_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             items_table.setItem(r, 3, t_item)
 
-            # Format
             fmt_lbl = f"{it.model_format}" + (" (unzip)" if it.is_zip else "")
             f_item = QTableWidgetItem(fmt_lbl)
             f_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             items_table.setItem(r, 4, f_item)
 
-            # Files Count
             fc_item = QTableWidgetItem(str(it.files_count))
             fc_item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
             fc_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             items_table.setItem(r, 5, fc_item)
 
-            # Size
             s_item = QTableWidgetItem(human_size(it.total_bytes))
             s_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             s_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
@@ -1968,8 +2391,6 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
 
             is_visible = in_checked_subcats and matches_fmt and matches_query
             items_table.setRowHidden(r, not is_visible)
-
-            # If row is outside checked subcategories, uncheck it
             if not in_checked_subcats:
                 cb_item.setCheckState(Qt.Unchecked)
 
@@ -1982,20 +2403,19 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     def load_library(path_str: str) -> None:
         state["source"] = path_str
         src_display.setText(path_str)
+        src_display.setToolTip(path_str)
         log_msg(f"Scanning library: {path_str}")
 
-        models_only = models_only_cb.isChecked()
+        models_only = state.get("models_only", True)
         items, skipped = scan_items(Path(path_str), models_only=models_only)
 
-        # If zero items found with models_only, but assets exist without models, prompt or fallback
         if not items and models_only:
             all_items, _ = scan_items(Path(path_str), models_only=False)
             if all_items:
                 log_msg(f"Notice: Found {len(all_items)} asset folders with preview images, but none containing 3D models.")
                 items = all_items
-                models_only_cb.blockSignals(True)
-                models_only_cb.setChecked(False)
-                models_only_cb.blockSignals(False)
+                state["models_only"] = False
+                settings_dlg.models_only_cb.setChecked(False)
 
         state["items"] = items
         populate_category_tree()
@@ -2022,10 +2442,11 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             QMessageBox.warning(win, "No Items", "No items available in the selected categories.")
             return
 
-        is_balanced = balanced_cb.isChecked()
+        is_balanced = settings_dlg.balanced_cb.isChecked()
+        mode = settings_dlg.get_mechanism_mode()
 
-        if rb_count.isChecked():
-            limit_cnt = count_spin.value()
+        if mode == "count":
+            limit_cnt = settings_dlg.count_spin.value()
             if is_balanced:
                 selected_ids = select_balanced_items(
                     candidate_items,
@@ -2040,9 +2461,11 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             selected_bytes = sum(it.total_bytes for it in candidate_items if it.unique_id in selected_ids)
             log_msg(f"Applied item limit: selected {len(selected_ids)} items ({human_size(selected_bytes)}) {'(balanced round-robin)' if is_balanced else '(sequential)'}.")
 
-        elif rb_storage.isChecked():
-            mult = 1024 * 1024 * 1024 if unit_combo.currentText() == "GB" else 1024 * 1024
-            limit_bytes = int(storage_spin.value() * mult)
+        elif mode == "storage":
+            unit = settings_dlg.unit_combo.currentText()
+            mult = 1024 * 1024 * 1024 if unit == "GB" else 1024 * 1024
+            val = settings_dlg.storage_spin.value()
+            limit_bytes = int(val * mult)
             if is_balanced:
                 selected_ids = select_balanced_items(
                     candidate_items,
@@ -2055,9 +2478,9 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
                 selected_ids = select_storage_limit(candidate_items, limit_bytes)
 
             selected_bytes = sum(it.total_bytes for it in candidate_items if it.unique_id in selected_ids)
-            log_msg(f"Applied storage limit: selected {len(selected_ids)} items ({human_size(selected_bytes)}) within {storage_spin.value()} {unit_combo.currentText()} {'(balanced round-robin)' if is_balanced else '(sequential)'}.")
+            log_msg(f"Applied storage limit: selected {len(selected_ids)} items ({human_size(selected_bytes)}) within {val} {unit} {'(balanced round-robin)' if is_balanced else '(sequential)'}.")
 
-        else:  # rb_all
+        else:  # mode == "all"
             selected_ids = {it.unique_id for it in candidate_items}
             selected_bytes = sum(it.total_bytes for it in candidate_items)
             log_msg(f"Selected all {len(selected_ids)} items ({human_size(selected_bytes)}) across chosen categories.")
@@ -2070,47 +2493,28 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         state["updating_table"] = False
 
         update_selection_summary()
+        update_pills()
 
     def apply_fit_disk() -> None:
-        chosen = get_selected_disks()
+        chosen = settings_dlg.get_selected_disks()
         if not chosen:
-            QMessageBox.warning(win, "No Target Disk", "Select at least one target disk first.")
+            QMessageBox.warning(win, "No Target Disk", "Please select at least one target disk first in Settings -> Target Disks.")
             return
 
         min_free = min(d.free for d in chosen)
-        app_size = get_app_size(state["app_path"]) if (auto_app_cb.isChecked() and state["app_path"]) else 0
-        safety_reserve = 500 * 1024 * 1024 + app_size
+        app_size = get_app_size(state["app_path"]) if (state.get("auto_copy_app", True) and state["app_path"]) else 0
+        safety_reserve = state.get("safety_margin_mb", 500) * 1024 * 1024 + app_size
         usable = max(0, min_free - safety_reserve)
 
         usable_gb = usable / (1024 * 1024 * 1024)
-        storage_spin.setValue(max(0.1, round(usable_gb, 1)))
-        unit_combo.setCurrentText("GB")
-        rb_storage.setChecked(True)
+        settings_dlg.storage_spin.setValue(max(0.1, round(usable_gb, 1)))
+        settings_dlg.unit_combo.setCurrentText("GB")
+        settings_dlg.rb_storage.setChecked(True)
+        settings_dlg._save_state()
 
-        checked_subcats = get_checked_subcategories()
-        candidate_items = [it for it in state["items"] if (it.job, it.category) in checked_subcats]
-
-        if balanced_cb.isChecked():
-            selected_ids = select_balanced_items(
-                candidate_items,
-                mode="storage",
-                limit_value=usable,
-                selected_subcategories=checked_subcats,
-                group_by="category",
-            )
-        else:
-            selected_ids = select_storage_limit(candidate_items, usable)
-
-        state["updating_table"] = True
-        for r in range(items_table.rowCount()):
-            cb_item = items_table.item(r, 0)
-            it = cb_item.data(Qt.UserRole)
-            cb_item.setCheckState(Qt.Checked if it.unique_id in selected_ids else Qt.Unchecked)
-        state["updating_table"] = False
-
-        update_selection_summary()
-        selected_bytes = sum(it.total_bytes for it in candidate_items if it.unique_id in selected_ids)
-        log_msg(f"Auto-fit to disk free space: selected {len(selected_ids)} items ({human_size(selected_bytes)}), leaving safety margin on all selected disks.")
+        apply_selection_limit()
+        disk_label = chosen[0].label if len(chosen) == 1 else f"{len(chosen)} disks"
+        log_msg(f"Auto-fit to disk free space: set limit to {usable_gb:.1f} GB based on {disk_label} (reserving safety buffer).")
 
     # ----------------------------------------------------------------------
     # Copy Process Controls
@@ -2122,10 +2526,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         stop_btn.setEnabled(running)
         change_src_btn.setEnabled(not running)
         rescan_btn.setEnabled(not running)
-        refresh_disks_btn.setEnabled(not running)
-        add_disk_btn.setEnabled(not running)
-        apply_limit_btn.setEnabled(not running)
-        fit_disk_btn.setEnabled(not running)
+        settings_btn.setEnabled(not running)
+        manage_disks_btn.setEnabled(not running)
+        change_mode_btn.setEnabled(not running)
+        quick_apply_btn.setEnabled(not running)
         sel_all_cats_btn.setEnabled(not running)
         sel_none_cats_btn.setEnabled(not running)
         expand_cats_btn.setEnabled(not running)
@@ -2165,9 +2569,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     signals.error.connect(on_error)
 
     def start_copy() -> None:
-        chosen_disks = get_selected_disks()
+        chosen_disks = settings_dlg.get_selected_disks()
         if not chosen_disks:
-            QMessageBox.warning(win, "No Disk Selected", "Please select at least one destination disk or folder.")
+            QMessageBox.warning(win, "No Disk Selected", "Please select at least one destination disk in Settings -> Target Disks.")
+            settings_dlg.open_tab(1)
             return
 
         selected_items = get_selected_items()
@@ -2176,7 +2581,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             return
 
         total_needed = sum(it.total_bytes for it in selected_items)
-        app_size = get_app_size(state["app_path"]) if (auto_app_cb.isChecked() and state["app_path"]) else 0
+        app_size = get_app_size(state["app_path"]) if (state.get("auto_copy_app", True) and state["app_path"]) else 0
         grand_total = total_needed + app_size
 
         for d in chosen_disks:
@@ -2197,10 +2602,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             items=selected_items,
             dests=dest_paths,
             ctrl=ctrl,
-            workers=workers_spin.value(),
-            auto_copy_app=auto_app_cb.isChecked(),
-            app_path=state["app_path"] if auto_app_cb.isChecked() else None,
-            unzip_models=unzip_cb.isChecked(),
+            workers=state.get("workers", 1),
+            auto_copy_app=state.get("auto_copy_app", True),
+            app_path=state["app_path"] if state.get("auto_copy_app", True) else None,
+            unzip_models=state.get("unzip_models", True),
             signals=signals,
         )
         state["worker"] = worker
@@ -2227,18 +2632,11 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     # ----------------------------------------------------------------------
     change_src_btn.clicked.connect(lambda: _choose_src())
     rescan_btn.clicked.connect(lambda: load_library(state["source"]))
-    refresh_disks_btn.clicked.connect(refresh_disks)
-    add_disk_btn.clicked.connect(lambda: _add_custom_disk())
-    select_all_disks_btn.clicked.connect(lambda: _toggle_all_disks())
-    disks_list.itemChanged.connect(lambda *_: update_disks_status())
 
     category_tree.itemChanged.connect(on_tree_item_changed)
     sel_all_cats_btn.clicked.connect(lambda: _set_tree_checked(True))
     sel_none_cats_btn.clicked.connect(lambda: _set_tree_checked(False))
     expand_cats_btn.clicked.connect(lambda: category_tree.expandAll())
-
-    apply_limit_btn.clicked.connect(apply_selection_limit)
-    fit_disk_btn.clicked.connect(apply_fit_disk)
 
     search_input.textChanged.connect(filter_table)
     format_combo.currentIndexChanged.connect(filter_table)
@@ -2254,53 +2652,19 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         lambda r, c: _open_item_folder(r)
     )
 
-    change_app_btn.clicked.connect(lambda: _choose_app())
-    auto_app_cb.toggled.connect(lambda *_: update_selection_summary())
-    models_only_cb.toggled.connect(lambda *_: load_library(state["source"]))
-
     toggle_log_btn.clicked.connect(lambda: log_view.setVisible(not log_view.isVisible()))
 
     start_btn.clicked.connect(start_copy)
     pause_btn.clicked.connect(toggle_pause)
     stop_btn.clicked.connect(stop_copy)
 
+    def _open_settings(tab_idx: int = 0):
+        settings_dlg.open_tab(tab_idx)
+
     def _choose_src():
         d = QFileDialog.getExistingDirectory(win, "Choose Library or Category Root Directory", state["source"])
         if d:
             load_library(d)
-
-    def _add_custom_disk():
-        d = QFileDialog.getExistingDirectory(win, "Choose Destination Disk or Folder")
-        if d:
-            p = str(Path(d).resolve())
-            try:
-                u = shutil.disk_usage(p)
-                v = VolumeInfo(Path(p).name or p, p, u.free, u.total, True)
-                item = QListWidgetItem(f"📁 {v.label}  ({v.path})  —  {human_size(v.free)} free / {human_size(v.total)}")
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-                item.setCheckState(Qt.Checked)
-                item.setData(Qt.UserRole, v)
-                disks_list.addItem(item)
-                update_disks_status()
-                log_msg(f"Added custom destination: {p}")
-            except OSError as e:
-                QMessageBox.warning(win, "Error", f"Could not access {p}: {e}")
-
-    def _toggle_all_disks():
-        for i in range(disks_list.count()):
-            it = disks_list.item(i)
-            it.setCheckState(Qt.Checked)
-        update_disks_status()
-
-    def _choose_app():
-        path, _ = QFileDialog.getOpenFileName(win, "Select orga+ Application", str(Path.cwd()))
-        if not path:
-            path = QFileDialog.getExistingDirectory(win, "Select orga+ .app Bundle")
-        if path:
-            state["app_path"] = Path(path).resolve()
-            app_info_lbl.setText(f"App: {state['app_path'].name}")
-            log_msg(f"Selected custom app: {state['app_path']}")
-            update_selection_summary()
 
     def _set_tree_checked(checked: bool):
         state["updating_tree"] = True
@@ -2337,21 +2701,30 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             if it and it.asset.exists():
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(it.asset.resolve())))
 
-    # Initial load
-    refresh_disks()
+    # Initial load & dialog setup
+    settings_dlg = SettingsDialog(win)
+    settings_dlg.refresh_disks()
+
     if initial_dest:
         try:
             u = shutil.disk_usage(initial_dest)
             v = VolumeInfo(Path(initial_dest).name, initial_dest, u.free, u.total, True)
-            item = QListWidgetItem(f"💾 {v.label}  ({v.path})  —  {human_size(v.free)} free / {human_size(v.total)}")
+            used_pct = ((v.total - v.free) / v.total * 100) if v.total > 0 else 0
+            text = (
+                f"💾  {v.label}   [Initial Destination]\n"
+                f"    Path: {v.path}\n"
+                f"    Space: {human_size(v.free)} free  /  {human_size(v.total)} total  ({used_pct:.1f}% used)"
+            )
+            item = QListWidgetItem(text)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             item.setCheckState(Qt.Checked)
             item.setData(Qt.UserRole, v)
-            disks_list.addItem(item)
-            update_disks_status()
+            settings_dlg.disks_list.addItem(item)
+            settings_dlg.update_disks_status()
         except OSError:
             pass
 
+    update_pills()
     load_library(source)
     win.show()
     return app.exec()
