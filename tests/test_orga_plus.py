@@ -80,37 +80,68 @@ class TestOrgaPlus(unittest.TestCase):
         self.assertTrue((ROOT_DIR / "icon.png").exists())
         self.assertTrue((ROOT_DIR / "icon.ico").exists())
 
-    def test_storage_hierarchy_depth_3_enforced(self):
+    def test_dynamic_scanning_arbitrary_depths_and_multi_items(self):
+        """Test that orga+ dynamically discovers assets across any folder depth (depth 2, 3, 5, 6)
+        and supports multi-item subcategory folders."""
         import tempfile
         import shutil
         from desktop.backend.library import LibraryManager
 
-        tmp_dir = Path(tempfile.mkdtemp(prefix="olga_test_lib_"))
+        tmp_dir = Path(tempfile.mkdtemp(prefix="orga_test_lib_"))
         try:
-            # Depth 2 item: Category / AssetName (MUST BE IGNORED)
-            d2_dir = tmp_dir / "Category1" / "AssetDepth2"
+            # 1. Depth 2 item: Category / AssetName
+            d2_dir = tmp_dir / "Lighting" / "DeskLamp"
             d2_dir.mkdir(parents=True)
             (d2_dir / "thumb.jpg").write_bytes(b"dummy_img")
             (d2_dir / "model").mkdir()
-            (d2_dir / "model" / "asset.skp").write_bytes(b"dummy_skp")
+            (d2_dir / "model" / "lamp.skp").write_bytes(b"dummy_skp")
 
-            # Depth 3 item: Category / Subcategory / AssetName (MUST BE SCANNED)
-            d3_dir = tmp_dir / "Category1" / "Subcategory1" / "AssetDepth3"
+            # 2. Depth 3 item: Category / Subcategory / AssetName
+            d3_dir = tmp_dir / "Furniture" / "Chairs" / "OfficeChair"
             d3_dir.mkdir(parents=True)
             (d3_dir / "thumb.jpg").write_bytes(b"dummy_img")
             (d3_dir / "model").mkdir()
-            (d3_dir / "model" / "asset.skp").write_bytes(b"dummy_skp")
+            (d3_dir / "model" / "chair.skp").write_bytes(b"dummy_skp")
+
+            # 3. Depth 5 item: Architecture / Residential / Houses / Exteriors / Villa19492
+            d5_dir = tmp_dir / "Architecture" / "Residential" / "Houses" / "Exteriors" / "Villa19492"
+            d5_dir.mkdir(parents=True)
+            (d5_dir / "render.jpg").write_bytes(b"dummy_img")
+            (d5_dir / "model").mkdir()
+            (d5_dir / "model" / "villa.skp").write_bytes(b"dummy_skp")
+
+            # 4. Multi-item subcategory folder (no asset folder): Scenes / Commercial / Offices
+            multi_dir = tmp_dir / "Scenes" / "Commercial" / "Offices"
+            multi_dir.mkdir(parents=True)
+            (multi_dir / "Executive_Suite.jpg").write_bytes(b"dummy_img")
+            (multi_dir / "Boardroom_Modern.jpg").write_bytes(b"dummy_img")
+            (multi_dir / "model").mkdir()
+            (multi_dir / "model" / "Executive_Suite.rar").write_bytes(b"dummy_rar")
+            (multi_dir / "model" / "Boardroom_Modern.skp").write_bytes(b"dummy_skp")
 
             mgr = LibraryManager(base_dir=tmp_dir)
             scan = mgr.scan_library()
 
-            # Only depth 3 item should be returned
+            # All 5 items across all depths must be discovered
+            self.assertEqual(len(scan["items"]), 5)
             titles = [it["title"] for it in scan["items"]]
-            self.assertIn("AssetDepth3", titles)
-            self.assertNotIn("AssetDepth2", titles)
-            self.assertEqual(len(scan["items"]), 1)
-            self.assertEqual(scan["items"][0]["category"], "Category1")
-            self.assertEqual(scan["items"][0]["subcategory"], "Subcategory1")
+            self.assertIn("DeskLamp", titles)
+            self.assertIn("OfficeChair", titles)
+            self.assertIn("Villa19492", titles)
+            self.assertIn("Executive Suite", titles)
+            self.assertIn("Boardroom Modern", titles)
+
+            # Check category & subcategory resolutions
+            by_title = {it["title"]: it for it in scan["items"]}
+            self.assertEqual(by_title["DeskLamp"]["category"], "Lighting")
+            self.assertEqual(by_title["OfficeChair"]["category"], "Furniture")
+            self.assertEqual(by_title["OfficeChair"]["subcategory"], "Chairs")
+            self.assertEqual(by_title["Villa19492"]["category"], "Architecture")
+            self.assertEqual(by_title["Villa19492"]["subcategory"], "Residential / Houses / Exteriors")
+            self.assertEqual(by_title["Executive Suite"]["category"], "Scenes")
+            self.assertEqual(by_title["Executive Suite"]["subcategory"], "Commercial / Offices")
+            self.assertEqual(by_title["Boardroom Modern"]["category"], "Scenes")
+            self.assertEqual(by_title["Boardroom Modern"]["subcategory"], "Commercial / Offices")
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 

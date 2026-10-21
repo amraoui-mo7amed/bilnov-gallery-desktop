@@ -314,7 +314,9 @@ class TestOrgaCopyTool(unittest.TestCase):
         (ext_asset / "model").mkdir(parents=True)
         (ext_asset / "image_1.jpg").write_bytes(b"EXT_IMG_1" * 10)
         (ext_asset / "image_2.jpg").write_bytes(b"EXT_IMG_2" * 10)
-        (ext_asset / "model" / "exterior_model.rar").write_bytes(b"RAR_ARCHIVE_DATA" * 50)
+        rar_p = ext_asset / "model" / "exterior_model.rar"
+        with zipfile.ZipFile(rar_p, "w") as zf:
+            zf.writestr("exterior_model.skp", b"EXTERIOR_SKP_DATA" * 50)
 
         int_asset = scenes_root / "Interiors" / "LivingRoom_20114"
         (int_asset / "model").mkdir(parents=True)
@@ -367,15 +369,155 @@ class TestOrgaCopyTool(unittest.TestCase):
         )
         self.assertEqual(summary["items_done"], 1)
 
-        # Verify destination structure
+        # Verify destination structure: model extracted to .skp, archive cleaned up
         dest_ext = self.dest_disk / "Scenes" / "Exteriors" / "Villa_19492"
         self.assertTrue((dest_ext / "image_1.jpg").exists())
         self.assertTrue((dest_ext / "image_2.jpg").exists())
-        self.assertTrue((dest_ext / "model" / "exterior_model.rar").exists())
+        self.assertTrue((dest_ext / "model" / "exterior_model.skp").exists())
+        self.assertFalse((dest_ext / "model" / "exterior_model.rar").exists())
 
         # Verify unselected subcategory was not copied
         dest_int = self.dest_disk / "Scenes" / "Interiors" / "LivingRoom_20114"
         self.assertFalse(dest_int.exists())
+
+    def test_safe_extract_archive_rar_with_wrapper(self):
+        """Test safe_extract_archive extracts RAR archive and strips wrapper folder."""
+        from tools.orga_copy_tool import safe_extract_archive, normalize_model_directory
+
+        rar_p = self.tmp_dir / "villa_bundle.rar"
+        with zipfile.ZipFile(rar_p, "w") as zf:
+            zf.writestr("Villa_Folder/villa.skp", b"VILLA_SKP_DATA")
+            zf.writestr("Villa_Folder/textures/stone.jpg", b"STONE_DATA")
+
+        target_model = self.tmp_dir / "villa_output" / "model"
+        ctrl = CopyController()
+        chunks = []
+        safe_extract_archive(rar_p, target_model, ctrl, on_chunk=lambda n: chunks.append(n))
+
+        # Check that villa.skp sits directly in /model/ and wrapper was stripped
+        self.assertTrue((target_model / "villa.skp").exists())
+        self.assertEqual((target_model / "villa.skp").read_bytes(), b"VILLA_SKP_DATA")
+        self.assertTrue((target_model / "textures" / "stone.jpg").exists())
+        self.assertFalse((target_model / "villa_bundle.rar").exists())
+        self.assertFalse((target_model.parent / "villa_bundle.rar").exists())
+        self.assertFalse((target_model / "Villa_Folder").exists())
+
+    def test_normalize_model_directory_deep_skp_promotion(self):
+        """Test normalize_model_directory promotes any .skp file to model/ root."""
+        from tools.orga_copy_tool import normalize_model_directory
+
+        target_model = self.tmp_dir / "deep_asset" / "model"
+        deep_dir = target_model / "assets" / "nested_geometry"
+        deep_dir.mkdir(parents=True)
+        (deep_dir / "complex_scene.skp").write_bytes(b"COMPLEX_SKP_DATA")
+        (deep_dir / "textures").mkdir()
+        (deep_dir / "textures" / "fabric.jpg").write_bytes(b"FABRIC_DATA")
+
+        # Also leave a dummy .rar in model and asset dir
+        (target_model / "scene.rar").write_bytes(b"RAR")
+        (target_model.parent / "scene.rar").write_bytes(b"RAR")
+
+        normalize_model_directory(target_model, "scene.rar")
+
+        # The .skp must be promoted directly to target_model / complex_scene.skp
+        self.assertTrue((target_model / "complex_scene.skp").exists())
+        self.assertEqual((target_model / "complex_scene.skp").read_bytes(), b"COMPLEX_SKP_DATA")
+        # Archives must be removed
+        self.assertFalse((target_model / "scene.rar").exists())
+        self.assertFalse((target_model.parent / "scene.rar").exists())
+
+    def test_nested_subfolders_depth_6_discovery_and_copy(self):
+        """Test scanning and copying an asset nested at depth 6:
+        root / Architecture / Residential / Houses / Exteriors / Modern / Villa_19492"""
+        deep_root = self.tmp_dir / "Deep_Library"
+        villa_dir = deep_root / "Architecture" / "Residential" / "Houses" / "Exteriors" / "Modern" / "Villa_19492"
+        villa_dir.mkdir(parents=True)
+        (villa_dir / "render_1.jpg").write_bytes(b"RENDER_1" * 20)
+        (villa_dir / "render_2.jpg").write_bytes(b"RENDER_2" * 20)
+        (villa_dir / "model").mkdir()
+        rar_p = villa_dir / "model" / "villa.rar"
+        with zipfile.ZipFile(rar_p, "w") as zf:
+            zf.writestr("villa.skp", b"VILLA_SKP_DATA" * 50)
+
+        # 1. Scan deep root
+        items, skipped = scan_items(deep_root, models_only=True)
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item.job, "Architecture")
+        self.assertEqual(item.category, "Residential / Houses / Exteriors / Modern")
+        self.assertEqual(item.title, "Villa_19492")
+        self.assertEqual(item.model_format, "RAR")
+
+        # 2. Copy item to destination disk
+        ctrl = CopyController()
+        summary = run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=ctrl,
+            auto_copy_app=False,
+            unzip_models=True,
+        )
+        self.assertEqual(summary["items_done"], 1)
+
+        # 3. Verify destination hierarchy preserves all nested subfolders and unzips .skp
+        dest_villa = self.dest_disk / "Architecture" / "Residential" / "Houses" / "Exteriors" / "Modern" / "Villa_19492"
+        self.assertTrue((dest_villa / "render_1.jpg").exists())
+        self.assertTrue((dest_villa / "render_2.jpg").exists())
+        self.assertTrue((dest_villa / "model" / "villa.skp").exists())
+        self.assertFalse((dest_villa / "model" / "villa.rar").exists())
+
+    def test_multi_item_subcategory_folder_dynamic_images(self):
+        """Test a subcategory folder with multiple images and models directly inside:
+        Scenes / Commercial / Offices / Meeting_Rooms / [Boardroom.jpg, Suite.jpg, model/Boardroom.rar, model/Suite.skp]"""
+        multi_root = self.tmp_dir / "Multi_Library"
+        rooms_dir = multi_root / "Scenes" / "Commercial" / "Offices" / "Meeting_Rooms"
+        rooms_dir.mkdir(parents=True)
+        (rooms_dir / "Boardroom_Modern.jpg").write_bytes(b"BOARDROOM_IMG" * 15)
+        (rooms_dir / "Executive_Suite.png").write_bytes(b"SUITE_IMG" * 15)
+        (rooms_dir / "model").mkdir()
+
+        rar_p = rooms_dir / "model" / "Boardroom_Modern.rar"
+        with zipfile.ZipFile(rar_p, "w") as zf:
+            zf.writestr("Boardroom_Modern.skp", b"BOARDROOM_SKP" * 40)
+        (rooms_dir / "model" / "Executive_Suite.skp").write_bytes(b"SUITE_SKP" * 40)
+
+        # 1. Scan multi root: must discover both items individually!
+        items, skipped = scan_items(multi_root, models_only=True)
+        self.assertEqual(len(items), 2)
+        by_title = {it.title: it for it in items}
+        self.assertIn("Boardroom Modern", by_title)
+        self.assertIn("Executive Suite", by_title)
+
+        b_item = by_title["Boardroom Modern"]
+        self.assertEqual(b_item.job, "Scenes")
+        self.assertEqual(b_item.category, "Commercial / Offices / Meeting_Rooms")
+        self.assertEqual(b_item.model_format, "RAR")
+
+        s_item = by_title["Executive Suite"]
+        self.assertEqual(s_item.job, "Scenes")
+        self.assertEqual(s_item.category, "Commercial / Offices / Meeting_Rooms")
+        self.assertEqual(s_item.model_format, "SKP")
+
+        # 2. Copy only "Boardroom Modern"
+        ctrl = CopyController()
+        summary = run_copy(
+            items=[b_item],
+            dest_root=self.dest_disk,
+            ctrl=ctrl,
+            auto_copy_app=False,
+            unzip_models=True,
+        )
+        self.assertEqual(summary["items_done"], 1)
+
+        # 3. Verify destination: only Boardroom Modern copied and unzipped
+        dest_b = self.dest_disk / "Scenes" / "Commercial" / "Offices" / "Meeting_Rooms" / "Boardroom Modern"
+        self.assertTrue((dest_b / "Boardroom_Modern.jpg").exists())
+        self.assertTrue((dest_b / "model" / "Boardroom_Modern.skp").exists())
+        self.assertFalse((dest_b / "model" / "Boardroom_Modern.rar").exists())
+
+        # Executive Suite should NOT exist
+        dest_s = self.dest_disk / "Scenes" / "Commercial" / "Offices" / "Meeting_Rooms" / "Executive Suite"
+        self.assertFalse(dest_s.exists())
 
 
 if __name__ == "__main__":

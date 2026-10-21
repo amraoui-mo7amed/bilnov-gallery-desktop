@@ -2,11 +2,13 @@
 """PyInstaller spec for the standalone orga+ Copy Tool."""
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 ROOT_DIR = Path.cwd()
 
 datas = []
+binaries = []
 icon_ico = str(ROOT_DIR / 'desktop' / 'assets' / 'icon.ico')
 icon_icns = str(ROOT_DIR / 'desktop' / 'assets' / 'icon.icns')
 
@@ -16,10 +18,18 @@ hiddenimports = [
     'PySide6.QtWidgets',
 ]
 
+try:
+    py7zz_datas, py7zz_binaries, py7zz_hiddenimports = collect_all('py7zz')
+    datas += py7zz_datas
+    binaries += py7zz_binaries
+    hiddenimports += py7zz_hiddenimports
+except Exception as e:
+    print(f"Warning: collect_all('py7zz') failed: {e}")
+
 a = Analysis(
     [str(ROOT_DIR / 'tools' / 'orga_copy_tool.py')],
     pathex=[str(ROOT_DIR), str(ROOT_DIR / 'tools')],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -60,8 +70,8 @@ elif sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'orga+ Copy Tool',
             'CFBundleDisplayName': 'orga+ Copy Tool',
-            'CFBundleShortVersionString': '2.2.1',
-            'CFBundleVersion': '2.2.1',
+            'CFBundleShortVersionString': '2.3.0',
+            'CFBundleVersion': '2.3.0',
             'NSHighResolutionCapable': 'True',
             'LSMinimumSystemVersion': '11.0',
         },

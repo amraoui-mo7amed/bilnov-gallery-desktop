@@ -124,13 +124,13 @@ class LibraryManager:
 
     def scan_library(self, search: Optional[str] = None, category_filter: Optional[str] = None, subcategory_filter: Optional[str] = None) -> Dict[str, Any]:
         """
-        Scans storage for all articles, categories, and 3D models.
-        Strictly enforces the 3-level hierarchy:
-            storage / <category> / <Subcategory> / <asset name>
-        Where each asset contains:
-            <images> (preview images)
-            model / <archive file> (model archive or files)
-        Depth 2 (storage / <category> / <asset name>) is explicitly NOT treated as an asset.
+        Dynamically scans storage for all 3D models and preview images regardless of folder depth.
+        Supports:
+          - Deeply nested subfolders (depth 1, 2, 3, 4, 5, 6+ levels).
+          - Dedicated asset folders (e.g. Category/Subcategory/.../AssetFolder/).
+          - Multi-item subcategory folders (multiple images & models in the same directory).
+        Dynamically derives Category, Subcategory, and Title, pairing preview images with their
+        corresponding 3D model files.
         """
         items: List[Dict[str, Any]] = []
         total_models = 0
@@ -153,103 +153,202 @@ class LibraryManager:
                 "categories": [],
             }
 
-        # Discover article directories strictly at depth 3:
-        # storage/<category>/<subcategory>/<asset_name>
-        article_candidates: List[Path] = []
+        def _sort_key(p: Path):
+            m = re.search(r"(\d+)", p.stem)
+            return int(m.group(1)) if m else 9999
 
-        try:
-            for cat_dir in sorted(self.base_dir.iterdir()):
-                if not cat_dir.is_dir() or cat_dir.name.startswith(".") or self.is_article_dir(cat_dir):
-                    continue
-                for sub_dir in sorted(cat_dir.iterdir()):
-                    if not sub_dir.is_dir() or sub_dir.name.startswith(".") or self.is_article_dir(sub_dir):
-                        continue
-                    for asset_dir in sorted(sub_dir.iterdir()):
-                        if not asset_dir.is_dir() or asset_dir.name.startswith("."):
-                            continue
-                        if self.is_article_dir(asset_dir):
-                            article_candidates.append(asset_dir)
-        except Exception as e:
-            logger.error("Error walking data directory: %s", e)
+        def _match_model(img_path: Path, candidate_models: List[Path]) -> Optional[Path]:
+            if not candidate_models:
+                return None
+            img_stem = img_path.stem.lower()
+            # 1. Exact stem match
+            for m in candidate_models:
+                if m.stem.lower() == img_stem:
+                    return m
+            # 2. Substring / prefix match
+            for m in candidate_models:
+                m_stem = m.stem.lower()
+                if m_stem in img_stem or img_stem in m_stem:
+                    return m
+            # 3. Numeric ID match (e.g. 19492)
+            img_nums = re.findall(r"\d+", img_stem)
+            if img_nums:
+                for m in candidate_models:
+                    m_nums = re.findall(r"\d+", m.stem.lower())
+                    if any(num in m_nums for num in img_nums if len(num) >= 2):
+                        return m
+            # 4. If exactly one candidate in directory, pair with it
+            if len(candidate_models) == 1:
+                return candidate_models[0]
+            return None
 
-        for article_dir in sorted(article_candidates):
+        # Recursively discover asset folders and multi-item directories
+        discovered_candidates: List[Dict[str, Any]] = []
+        skip_dirs = {"model", "images", "textures", "__macosx", ".git", "venv", ".venv"}
+
+        for root_str, dirs, files in os.walk(self.base_dir):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in skip_dirs]
+            curr_dir = Path(root_str)
+            if curr_dir == self.base_dir:
+                continue
+
+            # Preview images directly in curr_dir
+            raw_imgs = [
+                curr_dir / f for f in files
+                if not f.startswith(".") and Path(f).suffix.lower() in SUPPORTED_IMAGE_EXTS
+            ]
+
+            # Preview images in images/ subfolder
+            imgs_subdir = curr_dir / "images"
+            if imgs_subdir.is_dir():
+                try:
+                    for f in imgs_subdir.iterdir():
+                        if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_IMAGE_EXTS:
+                            raw_imgs.append(f)
+                except (PermissionError, OSError):
+                    pass
+
+            raw_imgs.sort(key=_sort_key)
+
+            # Models in model/ subfolder or directly in curr_dir
+            models: List[Path] = []
+            model_dir = curr_dir / "model"
+            if model_dir.is_dir():
+                try:
+                    for f in model_dir.iterdir():
+                        if f.is_file() and not f.name.startswith(".") and (f.suffix.lower() in SUPPORTED_MODEL_EXTS or f.suffix.lower() in {".zip", ".rar", ".7z", ".tar", ".gz"}):
+                            models.append(f)
+                except (PermissionError, OSError):
+                    pass
+
+            for f in files:
+                if not f.startswith("."):
+                    ext = Path(f).suffix.lower()
+                    if ext in SUPPORTED_MODEL_EXTS or ext in {".zip", ".rar", ".7z", ".tar", ".gz"}:
+                        models.append(curr_dir / f)
+
+            has_meta = (curr_dir / "meta.json").exists()
+
+            if not raw_imgs and not models and not has_meta:
+                continue
+
             try:
-                rel_parts = article_dir.relative_to(self.base_dir).parts
+                rel_parts = curr_dir.relative_to(self.base_dir).parts
             except ValueError:
-                continue
+                rel_parts = (curr_dir.name,)
 
-            if len(rel_parts) < 3:
-                continue
+            # Check if this folder contains multiple items or is a dedicated asset folder
+            is_multi = False
+            if len(models) > 1 and len(raw_imgs) > 1 and not has_meta and not imgs_subdir.is_dir():
+                matched_count = sum(1 for img in raw_imgs if _match_model(img, models) is not None)
+                if matched_count >= 2:
+                    is_multi = True
 
-            cat_name = rel_parts[0]
-            sub_name = rel_parts[1]
-            article_title = article_dir.name
-            meta = self.get_meta(article_dir)
-            if meta.get("title"):
-                article_title = meta.get("title")
+            if is_multi:
+                # Multi-item directory: curr_dir is the subcategory container
+                if len(rel_parts) == 0:
+                    cat_name = "General"
+                    sub_name = "General"
+                elif len(rel_parts) == 1:
+                    cat_name = rel_parts[0]
+                    sub_name = rel_parts[0]
+                else:
+                    cat_name = rel_parts[0]
+                    sub_name = " / ".join(rel_parts[1:])
+
+                for img in raw_imgs:
+                    matched_m = _match_model(img, models)
+                    m_size = matched_m.stat().st_size if matched_m and matched_m.exists() else 0
+                    i_size = img.stat().st_size if img.exists() else 0
+                    item_title = img.stem.replace("_", " ").replace("-", " ").strip()
+                    rel_item_id = f"{'/'.join(rel_parts)}/{img.stem}"
+
+                    discovered_candidates.append({
+                        "id": rel_item_id,
+                        "category": cat_name,
+                        "subcategory": sub_name,
+                        "title": item_title,
+                        "folder_dir": curr_dir,
+                        "images": [img],
+                        "model_file": matched_m,
+                        "model_size": m_size,
+                        "total_size": i_size + m_size,
+                        "article_url": "",
+                        "modified_at": int(img.stat().st_mtime) if img.exists() else int(curr_dir.stat().st_mtime),
+                    })
+            else:
+                # Dedicated single asset folder
+                if len(rel_parts) == 0:
+                    cat_name = "General"
+                    sub_name = "General"
+                    folder_title = curr_dir.name
+                elif len(rel_parts) == 1:
+                    cat_name = self.base_dir.name or "General"
+                    sub_name = "General"
+                    folder_title = rel_parts[0]
+                elif len(rel_parts) == 2:
+                    cat_name = rel_parts[0]
+                    sub_name = "General"
+                    folder_title = rel_parts[1]
+                elif len(rel_parts) == 3:
+                    cat_name = rel_parts[0]
+                    sub_name = rel_parts[1]
+                    folder_title = rel_parts[2]
+                else:
+                    cat_name = rel_parts[0]
+                    sub_name = " / ".join(rel_parts[1:-1])
+                    folder_title = rel_parts[-1]
+
+                meta = self.get_meta(curr_dir)
+                article_title = meta.get("title") or folder_title.replace("_", " ")
+                main_model = models[0] if models else None
+                m_size = main_model.stat().st_size if main_model and main_model.exists() else 0
+                imgs_size = sum(img.stat().st_size for img in raw_imgs if img.exists())
+                rel_article = str(curr_dir.relative_to(self.base_dir))
+
+                discovered_candidates.append({
+                    "id": rel_article,
+                    "category": cat_name,
+                    "subcategory": sub_name,
+                    "title": article_title,
+                    "folder_dir": curr_dir,
+                    "images": raw_imgs,
+                    "model_file": main_model,
+                    "model_size": m_size,
+                    "total_size": imgs_size + m_size,
+                    "article_url": meta.get("article_url", ""),
+                    "modified_at": int(curr_dir.stat().st_mtime),
+                })
+
+        for candidate in discovered_candidates:
+            cat_name = candidate["category"]
+            sub_name = candidate["subcategory"]
+            article_title = candidate["title"]
+            model_file = candidate["model_file"]
+            raw_imgs = candidate["images"]
+            model_size = candidate["model_size"]
+            curr_dir = candidate["folder_dir"]
 
             if cat_name:
                 categories_set.add(cat_name)
             if sub_name:
                 subcategories_set.add(sub_name)
 
-            # Check model file inside article_dir / "model" or directly in article_dir
-            model_file: Optional[Path] = None
-            model_size = 0
-
-            model_dir = article_dir / "model"
-            if model_dir.exists() and model_dir.is_dir():
-                model_files = [f for f in model_dir.iterdir() if f.is_file() and not f.name.startswith(".")]
-                if model_files:
-                    model_file = model_files[0]
-                    model_size = model_file.stat().st_size
-
-            if not model_file:
-                # Look for standalone 3D model files directly in article dir
-                direct_models = [
-                    f for f in article_dir.iterdir()
-                    if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_MODEL_EXTS
-                ]
-                if direct_models:
-                    model_file = direct_models[0]
-                    model_size = model_file.stat().st_size
-
             if model_file:
                 total_models += 1
                 total_size_bytes += model_size
-
-            # Discover image previews
-            raw_imgs: List[Path] = []
-            for img in article_dir.iterdir():
-                if img.is_file() and not img.name.startswith(".") and img.suffix.lower() in SUPPORTED_IMAGE_EXTS:
-                    raw_imgs.append(img)
-
-            # Also check article_dir / "images" subfolder if present
-            imgs_subdir = article_dir / "images"
-            if imgs_subdir.exists() and imgs_subdir.is_dir():
-                for img in imgs_subdir.iterdir():
-                    if img.is_file() and not img.name.startswith(".") and img.suffix.lower() in SUPPORTED_IMAGE_EXTS:
-                        raw_imgs.append(img)
-
-            # Sort images naturally (image_1, image_2, image_10)
-            def _sort_key(p: Path):
-                m = re.search(r"(\d+)", p.stem)
-                return int(m.group(1)) if m else 9999
-
-            raw_imgs.sort(key=_sort_key)
-            images = []
-            for img in raw_imgs:
-                images.append(str(img.relative_to(self.base_dir)))
-                total_images += 1
-                total_size_bytes += img.stat().st_size
 
             # Filter by Category
             if category_filter and category_filter != "all" and cat_name.lower() != category_filter.lower():
                 continue
 
-            # Filter by Subcategory
-            if subcategory_filter and subcategory_filter != "all" and sub_name.lower() != subcategory_filter.lower():
-                continue
+            # Filter by Subcategory (supports full path e.g. "Commercial / Offices" or leaf "Offices")
+            if subcategory_filter and subcategory_filter != "all":
+                s_filter = subcategory_filter.strip().lower()
+                sub_lower = sub_name.lower()
+                leaf_sub = sub_lower.split(" / ")[-1].strip()
+                if s_filter != sub_lower and s_filter != leaf_sub:
+                    continue
 
             # Filter by Search Keyword
             if search:
@@ -260,19 +359,22 @@ class LibraryManager:
                 if not (match_title or match_cat or match_file):
                     continue
 
-            rel_article = str(article_dir.relative_to(self.base_dir))
+            images = []
+            for img in raw_imgs:
+                images.append(str(img.relative_to(self.base_dir)))
+                total_images += 1
+                total_size_bytes += img.stat().st_size
+
+            rel_article = str(curr_dir.relative_to(self.base_dir))
             rel_model = str(model_file.relative_to(self.base_dir)) if model_file else None
 
-            # Format human title
-            clean_title = meta.get("title") or article_title.replace("_", " ")
-
             items.append({
-                "id": rel_article,
+                "id": candidate["id"],
                 "category": cat_name,
                 "subcategory": sub_name,
-                "title": clean_title,
+                "title": article_title,
                 "folder_path": rel_article,
-                "folder_full_path": str(article_dir.resolve()),
+                "folder_full_path": str(curr_dir.resolve()),
                 "has_model": model_file is not None,
                 "model_filename": model_file.name if model_file else None,
                 "model_path": rel_model,
@@ -281,8 +383,8 @@ class LibraryManager:
                 "model_size_bytes": model_size,
                 "images": images,
                 "images_count": len(images),
-                "article_url": meta.get("article_url", ""),
-                "modified_at": int(article_dir.stat().st_mtime),
+                "article_url": candidate["article_url"],
+                "modified_at": candidate["modified_at"],
             })
 
         # Sort newest first
@@ -333,21 +435,6 @@ class LibraryManager:
         if not self.base_dir.exists():
             return []
 
-        # 1. Collect directly from folder hierarchy: storage/<Category>/<Subcategory>/
-        try:
-            for cat_dir in sorted(self.base_dir.iterdir()):
-                if not cat_dir.is_dir() or cat_dir.name.startswith(".") or self.is_article_dir(cat_dir):
-                    continue
-                if category and category.strip() and cat_dir.name.lower() != category.strip().lower():
-                    continue
-                for sub_dir in sorted(cat_dir.iterdir()):
-                    if not sub_dir.is_dir() or sub_dir.name.startswith(".") or self.is_article_dir(sub_dir):
-                        continue
-                    subcats.add(sub_dir.name)
-        except Exception as e:
-            logger.error("Error reading subcategories from disk: %s", e)
-
-        # 2. Collect from scanned library items
         try:
             items = self.scan_library().get("items", [])
             target = category.strip().lower() if category and category.strip() else None
@@ -357,8 +444,8 @@ class LibraryManager:
                 if s and s.lower() != "general":
                     if not target or c.lower() == target:
                         subcats.add(s)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Error reading subcategories: %s", e)
 
         return sorted(list(subcats), key=lambda x: x.lower())
 

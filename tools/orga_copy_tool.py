@@ -75,6 +75,12 @@ class CopyItem:
     model_format: str = ""
     is_zip: bool = False
     model_path: Optional[Path] = None
+    custom_files: Optional[List[Path]] = None
+    item_id: Optional[str] = None
+
+    @property
+    def is_archive(self) -> bool:
+        return self.is_zip or (self.model_path is not None and self.model_path.suffix.lower() in ARCHIVE_EXTS)
 
     @property
     def category_name(self) -> str:
@@ -86,11 +92,15 @@ class CopyItem:
 
     @property
     def rel_parts(self) -> Tuple[str, str, str]:
-        return (self.job, self.category, self.asset.name)
+        suffix = self.title if self.custom_files else self.asset.name
+        return (self.job, self.category, suffix)
 
     @property
     def unique_id(self) -> str:
-        return f"{self.job}/{self.category}/{self.asset.name}"
+        if self.item_id:
+            return self.item_id
+        suffix = self.title if self.custom_files else self.asset.name
+        return f"{self.job}/{self.category}/{suffix}"
 
 
 @dataclass
@@ -172,7 +182,7 @@ def get_model_details(asset: Path) -> Tuple[str, bool, Optional[Path]]:
     primary = natives[0] if natives else candidates[0]
 
     fmt = primary.suffix.lower().lstrip(".").upper()
-    is_zip = primary.suffix.lower() == ".zip"
+    is_zip = primary.suffix.lower() in ARCHIVE_EXTS
     return (fmt, is_zip, primary)
 
 
@@ -218,6 +228,29 @@ def _is_asset_directory(p: Path) -> bool:
     return False
 
 
+def match_model_for_image(img_path: Path, candidate_models: List[Path]) -> Optional[Path]:
+    """Matches a preview image to its corresponding 3D model file by stem, prefix, or ID."""
+    if not candidate_models:
+        return None
+    img_stem = img_path.stem.lower()
+    for m in candidate_models:
+        if m.stem.lower() == img_stem:
+            return m
+    for m in candidate_models:
+        m_stem = m.stem.lower()
+        if m_stem in img_stem or img_stem in m_stem:
+            return m
+    img_nums = re.findall(r"\d+", img_stem)
+    if img_nums:
+        for m in candidate_models:
+            m_nums = re.findall(r"\d+", m.stem.lower())
+            if any(num in m_nums for num in img_nums if len(num) >= 2):
+                return m
+    if len(candidate_models) == 1:
+        return candidate_models[0]
+    return None
+
+
 def find_asset_directories(root: Path) -> List[Path]:
     """Find all asset directories under root, avoiding recursing inside asset directories."""
     root = Path(root).resolve()
@@ -230,7 +263,7 @@ def find_asset_directories(root: Path) -> List[Path]:
     assets: List[Path] = []
 
     def _walk(curr: Path, depth: int):
-        if depth > 6:
+        if depth > 20:
             return
         subdirs: List[Path] = []
         try:
@@ -254,11 +287,7 @@ def get_asset_hierarchy(root: Path, asset_dir: Path) -> Tuple[str, str, str]:
     """
     Given an asset directory and the library root, determine:
     (Category, Subcategory, AssetTitle/FolderName).
-    Handles:
-      - root / <Category> / <Subcategory> / <Asset> (depth 3)
-      - root (which is Category, e.g. 'Scenes') / <Subcategory> / <Asset> (depth 2)
-      - root (which is Subcategory) / <Asset> (depth 1)
-      - arbitrary nested hierarchies
+    Handles arbitrary nested hierarchies (depth 1, 2, 3, 4, 5, 6+).
     """
     root = Path(root).resolve()
     asset_dir = Path(asset_dir).resolve()
@@ -268,7 +297,11 @@ def get_asset_hierarchy(root: Path, asset_dir: Path) -> Tuple[str, str, str]:
     except ValueError:
         parts = (asset_dir.name,)
 
-    if len(parts) == 1:
+    if len(parts) == 0:
+        cat = root.name or "General"
+        subcat = "General"
+        asset_name = asset_dir.name
+    elif len(parts) == 1:
         cat = root.parent.name if (root.parent and root.parent.name and root.parent != root) else root.name
         subcat = root.name
         asset_name = parts[0]
@@ -278,7 +311,7 @@ def get_asset_hierarchy(root: Path, asset_dir: Path) -> Tuple[str, str, str]:
         asset_name = parts[1]
     else:
         cat = parts[0]
-        subcat = "/".join(parts[1:-1])
+        subcat = " / ".join(p.strip() for p in parts[1:-1])
         asset_name = parts[-1]
 
     return cat, subcat, asset_name
@@ -298,10 +331,11 @@ def _iter_asset_files(asset: Path) -> List[Path]:
 
 def scan_items(root: Path, models_only: bool = True) -> Tuple[List[CopyItem], int]:
     """
-    Walk root and return (items, skipped_count).
-    Correctly recognizes categories and subcategories even when root is a single
-    Category folder (such as 'Scenes' or 'Furniture') or the parent library folder.
-    Only items with models are returned if models_only is True.
+    Dynamically scan root for all 3D assets and preview images regardless of folder depth.
+    Supports:
+      - Deeply nested subfolders (depth 1, 2, 3, 4, 5, 6+ levels).
+      - Dedicated single asset folders.
+      - Multi-item subcategory folders with multiple preview images & models.
     """
     items: List[CopyItem] = []
     skipped = 0
@@ -309,42 +343,140 @@ def scan_items(root: Path, models_only: bool = True) -> Tuple[List[CopyItem], in
     if not root.is_dir():
         return items, skipped
 
-    asset_dirs = find_asset_directories(root)
+    skip_dirs = {"model", "images", "textures", "__macosx", ".git", "venv", ".venv"}
 
-    for asset in asset_dirs:
-        if models_only and not has_model(asset):
-            skipped += 1
+    # Track folders we already handled to prevent duplicate child scans
+    handled_dirs: Set[Path] = set()
+
+    for root_str, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in skip_dirs]
+        curr_dir = Path(root_str)
+        if any(h in curr_dir.parents for h in handled_dirs):
             continue
 
-        cat, subcat, default_title = get_asset_hierarchy(root, asset)
-        fmt, is_zip, model_p = get_model_details(asset)
-
-        title = default_title
-        meta_p = asset / "meta.json"
-        if meta_p.exists():
+        raw_imgs = [
+            curr_dir / f for f in files
+            if not f.startswith(".") and Path(f).suffix.lower() in IMAGE_EXTS
+        ]
+        imgs_sub = curr_dir / "images"
+        if imgs_sub.is_dir():
             try:
-                meta_data = json.loads(meta_p.read_text(encoding="utf-8"))
-                if meta_data.get("title"):
-                    title = meta_data.get("title")
-            except Exception:
+                for f in imgs_sub.iterdir():
+                    if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in IMAGE_EXTS:
+                        raw_imgs.append(f)
+            except (PermissionError, OSError):
                 pass
 
-        files = _iter_asset_files(asset)
-        size = sum(f.stat().st_size for f in files)
+        models: List[Path] = []
+        model_sub = curr_dir / "model"
+        if model_sub.is_dir():
+            try:
+                for f in model_sub.iterdir():
+                    if f.is_file() and not f.name.startswith(".") and (f.suffix.lower() in MODEL_EXTS or f.suffix.lower() in ARCHIVE_EXTS):
+                        models.append(f)
+            except (PermissionError, OSError):
+                pass
+        for f in files:
+            if not f.startswith("."):
+                ext = Path(f).suffix.lower()
+                if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
+                    models.append(curr_dir / f)
 
-        items.append(
-            CopyItem(
-                job=cat,
-                category=subcat,
-                asset=asset,
-                title=title,
-                total_bytes=size,
-                files_count=len(files),
-                model_format=fmt,
-                is_zip=is_zip,
-                model_path=model_p,
+        has_meta = (curr_dir / "meta.json").exists()
+        if not raw_imgs and not models and not has_meta:
+            continue
+
+        try:
+            rel_parts = curr_dir.relative_to(root).parts
+        except ValueError:
+            rel_parts = (curr_dir.name,)
+
+        # Determine whether curr_dir is a multi-item folder
+        is_multi = False
+        if len(models) > 1 and len(raw_imgs) > 1 and not has_meta and not imgs_sub.is_dir():
+            matched_count = sum(1 for img in raw_imgs if match_model_for_image(img, models) is not None)
+            if matched_count >= 2:
+                is_multi = True
+
+        if is_multi:
+            handled_dirs.add(curr_dir)
+            if len(rel_parts) == 0:
+                cat = root.name or "General"
+                subcat = "General"
+            elif len(rel_parts) == 1:
+                cat = root.name
+                subcat = rel_parts[0]
+            else:
+                cat = rel_parts[0]
+                subcat = " / ".join(p.strip() for p in rel_parts[1:])
+
+            for img in raw_imgs:
+                matched_m = match_model_for_image(img, models)
+                if models_only and not matched_m:
+                    skipped += 1
+                    continue
+
+                item_title = img.stem.replace("_", " ").replace("-", " ").strip().title()
+                custom_files = [img]
+                if matched_m:
+                    custom_files.append(matched_m)
+                    fmt = matched_m.suffix.lower().lstrip(".").upper()
+                    is_zip = matched_m.suffix.lower() in ARCHIVE_EXTS
+                else:
+                    fmt = ""
+                    is_zip = False
+
+                size = sum(f.stat().st_size for f in custom_files if f.exists())
+                items.append(
+                    CopyItem(
+                        job=cat,
+                        category=subcat,
+                        asset=curr_dir,
+                        title=item_title,
+                        total_bytes=size,
+                        files_count=len(custom_files),
+                        model_format=fmt,
+                        is_zip=is_zip,
+                        model_path=matched_m,
+                        custom_files=custom_files,
+                        item_id=f"{cat}/{subcat}/{img.stem}",
+                    )
+                )
+        elif _is_asset_directory(curr_dir):
+            handled_dirs.add(curr_dir)
+            if models_only and not models:
+                skipped += 1
+                continue
+
+            cat, subcat, default_title = get_asset_hierarchy(root, curr_dir)
+            fmt, is_zip, model_p = get_model_details(curr_dir)
+
+            title = default_title
+            meta_p = curr_dir / "meta.json"
+            if meta_p.exists():
+                try:
+                    meta_data = json.loads(meta_p.read_text(encoding="utf-8"))
+                    if meta_data.get("title"):
+                        title = meta_data.get("title")
+                except Exception:
+                    pass
+
+            files = _iter_asset_files(curr_dir)
+            size = sum(f.stat().st_size for f in files)
+
+            items.append(
+                CopyItem(
+                    job=cat,
+                    category=subcat,
+                    asset=curr_dir,
+                    title=title,
+                    total_bytes=size,
+                    files_count=len(files),
+                    model_format=fmt,
+                    is_zip=is_zip,
+                    model_path=model_p,
+                )
             )
-        )
 
     return items, skipped
 
@@ -606,6 +738,215 @@ def _fast_copy(
     return "buffered"
 
 
+def normalize_model_directory(target_model_dir: Path, archive_name: str = "") -> None:
+    """
+    Normalizes the extracted model directory:
+      1. Purges archive files (.zip, .rar, .7z, .tar, .gz) from model/ and parent asset dir.
+      2. Removes metadata junk (__MACOSX, .DS_Store, Thumbs.db, desktop.ini).
+      3. Peels back single-wrapper directories iteratively so model files sit directly in model/.
+      4. If no .skp file is at the root of model/, locates any .skp file in subdirectories
+         and promotes it directly to model/.
+      5. Cleans up any remaining empty subdirectories.
+    """
+    target_model_dir = Path(target_model_dir).resolve()
+    if not target_model_dir.is_dir():
+        return
+
+    # 1. Clean up archives from model/ and parent asset directory
+    for d in (target_model_dir, target_model_dir.parent):
+        if not d.is_dir():
+            continue
+        for ext in ("*.zip", "*.rar", "*.7z", "*.tar", "*.gz"):
+            for arch in d.glob(ext):
+                try:
+                    arch.unlink()
+                except OSError:
+                    pass
+        if archive_name:
+            af = d / archive_name
+            if af.exists():
+                try:
+                    af.unlink()
+                except OSError:
+                    pass
+
+    # 2. Remove metadata junk
+    for macosx in list(target_model_dir.rglob("__MACOSX")):
+        if macosx.is_dir():
+            shutil.rmtree(macosx, ignore_errors=True)
+    for junk in list(target_model_dir.rglob(".DS_Store")) + list(target_model_dir.rglob("Thumbs.db")) + list(target_model_dir.rglob("desktop.ini")):
+        try:
+            junk.unlink()
+        except OSError:
+            pass
+
+    # 3. Peel back single-wrapper directories iteratively
+    while True:
+        entries = [e for e in target_model_dir.iterdir() if not e.name.startswith(".")]
+        if len(entries) == 1 and entries[0].is_dir():
+            wrapper = entries[0]
+            for child in list(wrapper.iterdir()):
+                dest = target_model_dir / child.name
+                if dest.exists():
+                    if dest.is_dir():
+                        shutil.rmtree(dest, ignore_errors=True)
+                    else:
+                        dest.unlink()
+                shutil.move(str(child), str(dest))
+            shutil.rmtree(str(wrapper), ignore_errors=True)
+        else:
+            break
+
+    # 4. If no .skp file sits at root of model/, find any .skp in subdirectories and promote to root
+    root_skp = [f for f in target_model_dir.iterdir() if f.is_file() and f.suffix.lower() == ".skp"]
+    if not root_skp:
+        sub_skps = [f for f in target_model_dir.rglob("*.skp") if f.is_file() and not f.name.startswith(".")]
+        for s in sub_skps:
+            dest_skp = target_model_dir / s.name
+            if not dest_skp.exists():
+                shutil.move(str(s), str(dest_skp))
+
+    # 5. Clean up empty subdirectories
+    for p in sorted(target_model_dir.rglob("*"), key=lambda x: len(x.parts), reverse=True):
+        if p.is_dir() and not any(p.iterdir()):
+            try:
+                p.rmdir()
+            except OSError:
+                pass
+
+
+def safe_extract_archive(
+    archive_path: Path,
+    target_model_dir: Path,
+    ctrl: CopyController,
+    on_chunk: Callable[[int], None],
+    log_cb: Optional[Callable[[str], None]] = None,
+) -> int:
+    """
+    Extract archive (.zip, .rar, .7z) directly into target_model_dir.
+    Promotes the model's .skp file directly to /model/, strips single wrapper directories,
+    and guarantees no archive file is left in target_model_dir or asset root.
+    """
+    log = log_cb or (lambda m: None)
+    archive_path = Path(archive_path).resolve()
+    target_model_dir = Path(target_model_dir).resolve()
+    target_model_dir.mkdir(parents=True, exist_ok=True)
+    archive_size = archive_path.stat().st_size if archive_path.exists() else 0
+    ext = archive_path.suffix.lower()
+
+    extracted = False
+    err_msgs: List[str] = []
+
+    # 1. For .zip archives, try native zipfile first (fast, pure Python, streaming chunks)
+    if ext == ".zip":
+        try:
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                members = [
+                    m for m in zf.infolist()
+                    if not m.filename.startswith("__MACOSX/")
+                    and not Path(m.filename).name.startswith(".")
+                ]
+                for member in members:
+                    ctrl.checkpoint()
+                    if member.is_dir():
+                        continue
+
+                    rel_name = member.filename
+                    dest_file = (target_model_dir / rel_name).resolve()
+                    # Security: prevent zip-slip
+                    if not str(dest_file).startswith(str(target_model_dir)):
+                        continue
+
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member, "r") as src_stream, open(dest_file, "wb") as dst_stream:
+                        while True:
+                            ctrl.checkpoint()
+                            buf = src_stream.read(CHUNK_SIZE)
+                            if not buf:
+                                break
+                            dst_stream.write(buf)
+            extracted = True
+        except Exception as e:
+            err_msgs.append(f"zipfile: {e}")
+
+    # 2. Try py7zz (bundled universal 7zz binary: supports RAR1-5, 7Z, ZIP, TAR, GZ)
+    if not extracted:
+        try:
+            import py7zz
+            ctrl.checkpoint()
+            py7zz.extract_archive(archive_path, output_dir=target_model_dir, overwrite=True)
+            extracted = True
+        except Exception as e:
+            err_msgs.append(f"py7zz: {e}")
+
+    # 3. Fallback: System 7z / 7zz / 7za CLI
+    if not extracted:
+        for cmd in ("7zz", "7z", "7za"):
+            cmd_path = shutil.which(cmd)
+            if cmd_path:
+                try:
+                    ctrl.checkpoint()
+                    res = subprocess.run(
+                        [cmd_path, "x", str(archive_path), f"-o{target_model_dir}", "-y"],
+                        capture_output=True,
+                        text=True,
+                        timeout=180,
+                    )
+                    if res.returncode == 0:
+                        extracted = True
+                        break
+                    else:
+                        err_msgs.append(f"{cmd} (code {res.returncode}): {res.stderr.strip()[:80]}")
+                except Exception as e:
+                    err_msgs.append(f"{cmd}: {e}")
+
+    # 4. Fallback: macOS / Linux bsdtar / tar
+    if not extracted and sys.platform != "win32":
+        bsdtar = shutil.which("bsdtar") or "/usr/bin/bsdtar"
+        if os.path.exists(bsdtar):
+            try:
+                ctrl.checkpoint()
+                res = subprocess.run(
+                    [bsdtar, "-xf", str(archive_path), "-C", str(target_model_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
+                if res.returncode == 0:
+                    extracted = True
+                else:
+                    err_msgs.append(f"bsdtar (code {res.returncode}): {res.stderr.strip()[:80]}")
+            except Exception as e:
+                err_msgs.append(f"bsdtar: {e}")
+
+    # 5. Fallback: unrar command
+    if not extracted:
+        unrar = shutil.which("unrar")
+        if unrar:
+            try:
+                ctrl.checkpoint()
+                res = subprocess.run(
+                    [unrar, "x", "-o+", str(archive_path), str(target_model_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
+                if res.returncode == 0:
+                    extracted = True
+                else:
+                    err_msgs.append(f"unrar (code {res.returncode})")
+            except Exception as e:
+                err_msgs.append(f"unrar: {e}")
+
+    if not extracted:
+        raise RuntimeError(f"Extraction failed for {archive_path.name}: {'; '.join(err_msgs)}")
+
+    # 6. Normalize model directory (promote .skp to model/ root, peel wrappers, clean archives)
+    normalize_model_directory(target_model_dir, archive_name=archive_path.name)
+    on_chunk(archive_size)
+    return archive_size
+
+
 def safe_extract_zip(
     zip_path: Path,
     target_model_dir: Path,
@@ -613,71 +954,14 @@ def safe_extract_zip(
     on_chunk: Callable[[int], None],
     log_cb: Optional[Callable[[str], None]] = None,
 ) -> int:
-    """
-    Extract zip archive contents directly into target_model_dir.
-    Strips single root folder prefix if present so models sit cleanly in model/.
-    Guarantees no .zip file is left in target_model_dir.
-    """
-    log = log_cb or (lambda m: None)
-    target_model_dir.mkdir(parents=True, exist_ok=True)
-    extracted_bytes = 0
-
-    try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            members = [
-                m for m in zf.infolist()
-                if not m.filename.startswith("__MACOSX/")
-                and not Path(m.filename).name.startswith(".")
-            ]
-            non_dirs = [m for m in members if not m.is_dir()]
-            common_prefix = ""
-            if non_dirs:
-                first_parts = Path(non_dirs[0].filename).parts
-                if len(first_parts) > 1:
-                    candidate = first_parts[0] + "/"
-                    if all(m.filename.startswith(candidate) for m in non_dirs):
-                        common_prefix = candidate
-
-            for member in members:
-                ctrl.checkpoint()
-                if member.is_dir():
-                    continue
-
-                rel_name = member.filename
-                if common_prefix and rel_name.startswith(common_prefix):
-                    rel_name = rel_name[len(common_prefix):]
-                if not rel_name:
-                    continue
-
-                dest_file = (target_model_dir / rel_name).resolve()
-                # Security: prevent zip-slip
-                if not str(dest_file).startswith(str(target_model_dir.resolve())):
-                    continue
-
-                dest_file.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(member, "r") as src_stream, open(dest_file, "wb") as dst_stream:
-                    while True:
-                        ctrl.checkpoint()
-                        buf = src_stream.read(CHUNK_SIZE)
-                        if not buf:
-                            break
-                        dst_stream.write(buf)
-                        extracted_bytes += len(buf)
-                        on_chunk(len(buf))
-    except Exception as e:
-        log(f"Warning: Extraction failed for {zip_path.name}: {e}")
-        raise
-
-    # Remove any stale zip files from destination model dir and asset dir
-    for stale_dir in (target_model_dir, target_model_dir.parent):
-        stale_file = stale_dir / zip_path.name
-        if stale_file.exists():
-            try:
-                stale_file.unlink()
-            except OSError:
-                pass
-
-    return extracted_bytes
+    """Backwards-compatible extraction function."""
+    return safe_extract_archive(
+        zip_path,
+        target_model_dir,
+        ctrl,
+        on_chunk=on_chunk,
+        log_cb=log_cb,
+    )
 
 
 def copy_orga_app(
@@ -869,12 +1153,17 @@ def run_copy(
         item_label = f"{it.job} / {it.category} / {it.title}"
         progress.current_item = item_label
 
-        dest_asset = dest_root / it.job / it.category / it.asset.name
+        subcat_parts = [p.strip() for p in it.category.split("/") if p.strip()]
+        dest_asset = dest_root / it.job
+        for sp in subcat_parts:
+            dest_asset = dest_asset / sp
+        asset_folder_name = it.title if it.custom_files is not None else it.asset.name
+        dest_asset = dest_asset / asset_folder_name
         dest_model_dir = dest_asset / "model"
         dest_asset.mkdir(parents=True, exist_ok=True)
         dest_model_dir.mkdir(parents=True, exist_ok=True)
 
-        asset_files = _iter_asset_files(it.asset)
+        asset_files = it.custom_files if it.custom_files is not None else _iter_asset_files(it.asset)
 
         # Separate model files from preview images and metadata
         model_files = [f for f in asset_files if f.suffix.lower() in MODEL_EXTS or f.suffix.lower() in ARCHIVE_EXTS]
@@ -883,8 +1172,11 @@ def run_copy(
         # Copy previews and metadata
         for f in other_files:
             ctrl.checkpoint()
-            rel = f.relative_to(it.asset)
-            dst_f = dest_asset / rel
+            if it.custom_files is not None:
+                dst_f = dest_asset / f.name
+            else:
+                rel = f.relative_to(it.asset)
+                dst_f = dest_asset / rel
             size = f.stat().st_size
             progress.current_file = f.name
 
@@ -898,20 +1190,41 @@ def run_copy(
         # Handle model files
         for mf in model_files:
             ctrl.checkpoint()
-            is_zip_file = mf.suffix.lower() == ".zip"
+            ext = mf.suffix.lower()
+            is_archive = ext in ARCHIVE_EXTS
             progress.current_file = mf.name
 
-            if is_zip_file and unzip_models:
-                progress.current_file = f"Unzipping {mf.name} -> /model/"
+            if is_archive and unzip_models:
+                # Check if model has already been extracted on target disk
+                has_extracted_model = any(
+                    f.is_file() and (f.suffix.lower() == ".skp" or f.suffix.lower() in MODEL_EXTS)
+                    for f in dest_model_dir.iterdir()
+                ) if dest_model_dir.is_dir() else False
+
+                if skip_existing and has_extracted_model:
+                    on_chunk(mf.stat().st_size)
+                    continue
+
+                progress.current_file = f"Extracting {mf.name} -> /model/"
                 emit(item_label, progress.current_file, force=True)
-                log(f"Unzipping model archive for {it.title} -> model/")
-                safe_extract_zip(
-                    mf,
-                    dest_model_dir,
-                    ctrl,
-                    on_chunk=on_chunk,
-                    log_cb=log,
-                )
+                log(f"Extracting model archive for {it.title} ({mf.name}) -> model/")
+                try:
+                    safe_extract_archive(
+                        mf,
+                        dest_model_dir,
+                        ctrl,
+                        on_chunk=on_chunk,
+                        log_cb=log,
+                    )
+                except Exception as e:
+                    log(f"Extraction failed for {mf.name} ({e}), falling back to direct copy")
+                    dst_m = dest_model_dir / mf.name
+                    size = mf.stat().st_size
+                    if skip_existing and dst_m.exists() and dst_m.stat().st_size == size:
+                        on_chunk(size)
+                        continue
+                    emit(item_label, mf.name, force=True)
+                    _fast_copy(mf, dst_m, ctrl, on_chunk)
             else:
                 dst_m = dest_model_dir / mf.name
                 size = mf.stat().st_size
@@ -1627,10 +1940,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             extract_box_layout.setContentsMargins(12, 14, 12, 12)
             extract_box_layout.setSpacing(6)
 
-            self.unzip_cb = QCheckBox("Unzip 3D model archives (.zip) directly into /model/ directory")
+            self.unzip_cb = QCheckBox("Extract 3D model archives (.zip, .rar, .7z) directly into /model/ directory")
             self.unzip_cb.setChecked(state.get("unzip_models", True))
             unzip_help = QLabel(
-                "Strips the root archive folder so 3D model files sit cleanly in /model/, removing the original .zip file."
+                "Extracts 3D model files (including .skp) cleanly into /model/, promotes nested files, and removes the original archive (.zip/.rar)."
             )
             unzip_help.setStyleSheet("font-size: 11px; color: #94A3B8; margin-left: 26px;")
             extract_box_layout.addWidget(self.unzip_cb)
@@ -1912,7 +2225,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     title_row.setSpacing(8)
     title_lbl = QLabel("orga+ Copy Tool")
     title_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #F8FAFC;")
-    badge_lbl = QLabel("v2.2.1 Enhanced")
+    badge_lbl = QLabel("v2.3.0")
     badge_lbl.setStyleSheet("background-color: #312E81; color: #818CF8; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700;")
     title_row.addWidget(title_lbl)
     title_row.addWidget(badge_lbl)
