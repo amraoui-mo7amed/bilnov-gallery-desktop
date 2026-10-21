@@ -34,7 +34,7 @@ import sys
 import threading
 import time
 import zipfile
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -745,24 +745,51 @@ def copy_orga_app(
 
 @dataclass
 class Progress:
-    copied: int = 0
     total: int = 0
+    copied: int = 0
     items_done: int = 0
     items_total: int = 0
     current_item: str = ""
     current_file: str = ""
     started: float = field(default_factory=time.monotonic)
+    _samples: deque = field(default_factory=lambda: deque(maxlen=40))
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self):
+        now = time.monotonic()
+        self._samples.append((now, self.copied))
 
     def add_bytes(self, n: int) -> None:
         with self._lock:
             self.copied += n
+            now = time.monotonic()
+            if not self._samples or (now - self._samples[-1][0]) >= 0.05:
+                self._samples.append((now, self.copied))
 
     def snapshot(self) -> Tuple[int, int, float]:
         with self._lock:
             copied = self.copied
-        elapsed = max(time.monotonic() - self.started, 1e-6)
-        return copied, self.total, copied / elapsed
+            samples = list(self._samples)
+
+        now = time.monotonic()
+        speed = 0.0
+        if len(samples) >= 2:
+            cutoff = now - 2.0
+            idx = 0
+            while idx < len(samples) - 1 and samples[idx][0] < cutoff:
+                idx += 1
+            dt = samples[-1][0] - samples[idx][0]
+            db = samples[-1][1] - samples[idx][1]
+            if dt >= 0.2 and db >= 0:
+                speed = db / dt
+            else:
+                elapsed = max(now - self.started, 1e-6)
+                speed = copied / elapsed
+        else:
+            elapsed = max(now - self.started, 1e-6)
+            speed = copied / elapsed
+
+        return copied, self.total, max(0.0, speed)
 
 
 # --------------------------------------------------------------------------
@@ -805,6 +832,10 @@ def run_copy(
         copied, tot, speed = progress.snapshot()
         progress_cb((copied, tot, speed), item_label, file_label)
 
+    def on_chunk(n: int) -> None:
+        progress.add_bytes(n)
+        emit(progress.current_item, progress.current_file)
+
     free = shutil.disk_usage(dest_root).free
     if grand_total > free:
         raise IOError(
@@ -817,13 +848,15 @@ def run_copy(
     # 1. Auto-copy orga+ app if requested
     if auto_copy_app and app_path and app_path.exists():
         ctrl.checkpoint()
-        emit("orga+ App", app_path.name)
+        progress.current_item = "orga+ App"
+        progress.current_file = app_path.name
+        emit(progress.current_item, progress.current_file, force=True)
         try:
             copy_orga_app(
                 app_path,
                 dest_root,
                 ctrl,
-                on_chunk=progress.add_bytes,
+                on_chunk=on_chunk,
                 log_cb=log,
                 skip_existing=skip_existing,
             )
@@ -853,44 +886,48 @@ def run_copy(
             rel = f.relative_to(it.asset)
             dst_f = dest_asset / rel
             size = f.stat().st_size
+            progress.current_file = f.name
 
             if skip_existing and dst_f.exists() and dst_f.stat().st_size == size:
-                progress.add_bytes(size)
+                on_chunk(size)
                 continue
 
-            emit(item_label, f.name)
-            _fast_copy(f, dst_f, ctrl, progress.add_bytes)
+            emit(item_label, f.name, force=True)
+            _fast_copy(f, dst_f, ctrl, on_chunk)
 
         # Handle model files
         for mf in model_files:
             ctrl.checkpoint()
             is_zip_file = mf.suffix.lower() == ".zip"
+            progress.current_file = mf.name
 
             if is_zip_file and unzip_models:
-                emit(item_label, f"Unzipping {mf.name} -> /model/")
+                progress.current_file = f"Unzipping {mf.name} -> /model/"
+                emit(item_label, progress.current_file, force=True)
                 log(f"Unzipping model archive for {it.title} -> model/")
                 safe_extract_zip(
                     mf,
                     dest_model_dir,
                     ctrl,
-                    on_chunk=progress.add_bytes,
+                    on_chunk=on_chunk,
                     log_cb=log,
                 )
             else:
-                # Non-zip model (or zip without unzipping): save into /model/ dir as requested
                 dst_m = dest_model_dir / mf.name
                 size = mf.stat().st_size
                 if skip_existing and dst_m.exists() and dst_m.stat().st_size == size:
-                    progress.add_bytes(size)
+                    on_chunk(size)
                     continue
 
-                emit(item_label, mf.name)
-                _fast_copy(mf, dst_m, ctrl, progress.add_bytes)
+                emit(item_label, mf.name, force=True)
+                _fast_copy(mf, dst_m, ctrl, on_chunk)
 
         progress.items_done += 1
-        emit(item_label, "Done")
+        progress.current_file = "Done"
+        emit(item_label, "Done", force=True)
 
-    emit("", "", force=True)
+    progress.current_file = "Complete"
+    emit(progress.current_item, "Complete", force=True)
     log(f"Finished copying to {dest_root.name} successfully.")
     copied, tot, _ = progress.snapshot()
     return {
@@ -921,14 +958,23 @@ def run_copy_multi(
     results: List[dict] = []
     n = len(dests)
 
+    items_total_bytes = sum(it.total_bytes for it in items)
+    app_bytes = get_app_size(app_path) if (auto_copy_app and app_path) else 0
+    disk_payload = items_total_bytes + app_bytes
+    overall_total = disk_payload * n
+
     for i, dest in enumerate(dests, 1):
         if ctrl.stopped:
             break
         log(f"=== [Disk {i}/{n}] Starting export to {dest} ===")
 
-        def pcb(snap, item, fname, i=i):
+        base_offset = (i - 1) * disk_payload
+
+        def pcb(snap, item, fname, disk_idx=i, offset=base_offset):
             if progress_cb:
-                progress_cb(snap, f"[Disk {i}/{n}] {item}", fname)
+                disk_copied, disk_tot, speed = snap
+                curr_copied = offset + disk_copied
+                progress_cb((curr_copied, overall_total, speed), f"[Disk {disk_idx}/{n}] {item}", fname)
 
         try:
             r = run_copy(
@@ -1325,7 +1371,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     )
 
     class Signals(QObject):
-        progress = Signal(int, int, float, str, str)
+        progress = Signal(object, object, float, str, str)
         log = Signal(str)
         finished = Signal(dict)
         error = Signal(str)
@@ -1337,6 +1383,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             dests: List[Path],
             ctrl: CopyController,
             workers: int,
+            skip_existing: bool,
             auto_copy_app: bool,
             app_path: Optional[Path],
             unzip_models: bool,
@@ -1347,6 +1394,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             self.dests = dests
             self.ctrl = ctrl
             self.workers = workers
+            self.skip_existing = skip_existing
             self.auto_copy_app = auto_copy_app
             self.app_path = app_path
             self.unzip_models = unzip_models
@@ -1359,7 +1407,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
                     self.dests,
                     self.ctrl,
                     workers=self.workers,
-                    skip_existing=True,
+                    skip_existing=self.skip_existing,
                     auto_copy_app=self.auto_copy_app,
                     app_path=self.app_path,
                     unzip_models=self.unzip_models,
@@ -1864,7 +1912,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     title_row.setSpacing(8)
     title_lbl = QLabel("orga+ Copy Tool")
     title_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #F8FAFC;")
-    badge_lbl = QLabel("v2.2 Enhanced")
+    badge_lbl = QLabel("v2.2.1 Enhanced")
     badge_lbl.setStyleSheet("background-color: #312E81; color: #818CF8; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700;")
     title_row.addWidget(title_lbl)
     title_row.addWidget(badge_lbl)
@@ -2538,20 +2586,56 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         invert_sel_btn.setEnabled(not running)
         if not running:
             pause_btn.setText("⏸ Pause")
+        else:
+            bar.setValue(0)
+            bar.setFormat("0.0%")
+            status_lbl.setText("Starting export…")
+            speed_eta_lbl.setText("0.0 B/s • ETA: calculating…")
+
+    def format_eta(seconds: float) -> str:
+        if seconds <= 0 or seconds > 86400 * 7:
+            return "--:--"
+        sec = int(round(seconds))
+        hours = sec // 3600
+        mins = (sec % 3600) // 60
+        secs = sec % 60
+        if hours > 0:
+            return f"{hours:02d}:{mins:02d}:{secs:02d}"
+        return f"{mins:02d}:{secs:02d}"
 
     def on_progress(copied: int, total: int, speed: float, item_lbl: str, file_lbl: str) -> None:
-        pct = int(copied / total * 1000) if total else 0
-        bar.setValue(pct)
+        copied = int(copied) if copied else 0
+        total = int(total) if total else 0
+        speed = float(speed) if speed else 0.0
+
+        pct_val = int(copied / total * 1000) if total > 0 else 0
+        pct_val = max(0, min(1000, pct_val))
+        bar.setValue(pct_val)
+
+        pct_float = (copied / total * 100.0) if total > 0 else 0.0
+        bar.setFormat(f"{pct_float:.1f}%  ({human_size(copied)} / {human_size(total)})")
+
         remaining = max(total - copied, 0)
-        eta = remaining / speed if speed > 0 else 0
-        status_lbl.setText(f"{item_lbl}  [{file_lbl}]")
+        if speed >= 1024:
+            eta_str = format_eta(remaining / speed)
+            speed_str = f"{human_size(speed)}/s"
+        elif copied >= total and total > 0:
+            eta_str = "00:00"
+            speed_str = "0.0 B/s"
+        else:
+            eta_str = "calculating…"
+            speed_str = f"{human_size(speed)}/s" if speed > 0 else "0.0 B/s"
+
+        if item_lbl or file_lbl:
+            status_lbl.setText(f"{item_lbl}  [{file_lbl}]")
         speed_eta_lbl.setText(
-            f"{human_size(copied)} / {human_size(total)} • {human_size(speed)}/s • ETA {int(eta//60):02d}:{int(eta%60):02d}"
+            f"{human_size(copied)} / {human_size(total)} • {speed_str} • ETA {eta_str}"
         )
 
     def on_finished(summary: dict) -> None:
         set_running_state(False)
         bar.setValue(1000)
+        bar.setFormat("100.0%  Complete")
         status_lbl.setText("Finished successfully.")
         speed_eta_lbl.setText("Complete")
         log_msg("Copy finished successfully to all selected disks!")
@@ -2603,6 +2687,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             dests=dest_paths,
             ctrl=ctrl,
             workers=state.get("workers", 1),
+            skip_existing=state.get("skip_existing", True),
             auto_copy_app=state.get("auto_copy_app", True),
             app_path=state["app_path"] if state.get("auto_copy_app", True) else None,
             unzip_models=state.get("unzip_models", True),
@@ -2617,10 +2702,13 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         if ctrl.paused:
             ctrl.resume()
             pause_btn.setText("⏸ Pause")
+            status_lbl.setText("Transfer resumed.")
             log_msg("Transfer resumed.")
         else:
             ctrl.pause()
             pause_btn.setText("▶ Resume")
+            status_lbl.setText("Transfer paused.")
+            speed_eta_lbl.setText("Paused")
             log_msg("Transfer paused.")
 
     def stop_copy() -> None:
