@@ -6,11 +6,19 @@ orga+ Copy Tool
 High-speed standalone utility that copies 3D library items to USB / flash drives
 with full automation:
   * Select multiple disks or folders as copy targets.
-  * Filters and copies ONLY assets that contain 3D models.
-  * Unzips model archives directly into `<Asset>/model/` and removes the .zip file.
+  * Filters and copies assets containing 3D models (or preview assets).
+  * Automatically unzips model archives directly into `<Asset>/model/` and cleans .zip.
   * Automatically copies the `orga+` desktop application to the disk root.
-  * Flexible selection modes: Manual selection, Exact item count, Storage limit (GB/MB),
-    or Auto-fit to target disk capacity.
+  * Flexible copy mechanisms:
+      - Storage Limit (GB or MB)
+      - Exact Item Count
+      - Select All in Chosen Categories
+      - Round-Robin Balanced distribution across chosen categories / subcategories
+      - Auto-Fit to target disk capacity
+  * Hierarchical Category & Subcategory tree selection with real-time size & count indicators.
+  * Prominent real-time display of Current Size of Selected Objects and disk space status.
+  * Intelligent library scanning: supports root library directories, single Category folders
+    (e.g. 'Scenes'), and arbitrary subcategory hierarchies.
   * Real-time progress bar with transfer rate (MB/s), ETA, and pause/resume/stop controls.
 """
 
@@ -21,14 +29,15 @@ import datetime
 import json
 import os
 import shutil
+import subprocess
 import sys
 import threading
 import time
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 # --------------------------------------------------------------------------
 # Configuration & Formats
@@ -39,6 +48,7 @@ MODEL_EXTS = {
     ".3ds", ".max", ".c4d", ".glb", ".gltf", ".stl", ".dae", ".dxf",
 }
 
+ARCHIVE_EXTS = {".zip", ".rar", ".7z", ".tar", ".gz"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
 # 16 MiB chunks: maximizes sustained sequential write speed on USB flash drives
@@ -56,15 +66,23 @@ class CopyStopped(Exception):
 
 @dataclass
 class CopyItem:
-    job: str
-    category: str
-    asset: Path
-    title: str
+    job: str               # Category (e.g. Scenes, Furniture)
+    category: str          # Subcategory (e.g. Exteriors, Chairs)
+    asset: Path            # Path to asset folder
+    title: str             # Asset display title
     total_bytes: int = 0
     files_count: int = 0
     model_format: str = ""
     is_zip: bool = False
     model_path: Optional[Path] = None
+
+    @property
+    def category_name(self) -> str:
+        return self.job
+
+    @property
+    def subcategory_name(self) -> str:
+        return self.category
 
     @property
     def rel_parts(self) -> Tuple[str, str, str]:
@@ -108,19 +126,21 @@ def _visible(p: Path) -> bool:
 # --------------------------------------------------------------------------
 
 def has_model(asset: Path) -> bool:
-    """True when the asset folder contains a model file (in model/ dir or asset root)."""
+    """True when the asset folder contains a model or archive file (in model/ dir or asset root)."""
     model_dir = asset / "model"
     if model_dir.is_dir():
         for f in model_dir.iterdir():
-            if f.is_file() and _visible(f) and f.suffix.lower() in MODEL_EXTS:
-                return True
-            if f.is_file() and _visible(f) and f.suffix.lower() == ".zip":
-                return True
+            if f.is_file() and _visible(f):
+                ext = f.suffix.lower()
+                if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
+                    return True
         return False
 
     for f in asset.iterdir():
-        if f.is_file() and _visible(f) and f.suffix.lower() in MODEL_EXTS:
-            return True
+        if f.is_file() and _visible(f):
+            ext = f.suffix.lower()
+            if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
+                return True
     return False
 
 
@@ -131,35 +151,137 @@ def get_model_details(asset: Path) -> Tuple[str, bool, Optional[Path]]:
 
     if model_dir.is_dir():
         for f in sorted(model_dir.iterdir()):
-            if f.is_file() and _visible(f) and f.suffix.lower() in MODEL_EXTS:
-                candidates.append(f)
+            if f.is_file() and _visible(f):
+                ext = f.suffix.lower()
+                if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
+                    candidates.append(f)
 
     if not candidates:
         for f in sorted(asset.iterdir()):
-            if f.is_file() and _visible(f) and f.suffix.lower() in MODEL_EXTS:
-                candidates.append(f)
+            if f.is_file() and _visible(f):
+                ext = f.suffix.lower()
+                if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
+                    candidates.append(f)
 
     if not candidates:
         return ("", False, None)
 
-    # Prefer non-zip model if both exist, else first
-    non_zips = [c for c in candidates if c.suffix.lower() != ".zip"]
-    primary = non_zips[0] if non_zips else candidates[0]
+    # Prefer native 3D formats (.skp, .fbx, .obj, .blend, etc.) over archive formats (.zip, .rar), else first
+    native_formats = {".skp", ".fbx", ".obj", ".blend", ".3ds", ".max", ".c4d", ".glb", ".gltf", ".stl", ".dae", ".dxf"}
+    natives = [c for c in candidates if c.suffix.lower() in native_formats]
+    primary = natives[0] if natives else candidates[0]
 
     fmt = primary.suffix.lower().lstrip(".").upper()
     is_zip = primary.suffix.lower() == ".zip"
     return (fmt, is_zip, primary)
 
 
-def _looks_like_asset(p: Path) -> bool:
-    """A folder that is itself an asset is not a Job/Category container."""
+def _is_asset_directory(p: Path) -> bool:
+    """True if directory p looks like an individual asset folder."""
+    if not p.is_dir() or not _visible(p):
+        return False
+    if p.name.lower() in ("model", "images", "textures", "__macosx"):
+        return False
+
+    # 1. Has model/ subfolder
     if (p / "model").is_dir():
         return True
-    if (p / "images").is_dir():
-        return True
+
+    # 2. Has meta.json
     if (p / "meta.json").exists():
         return True
+
+    # 3. Inspect directory contents
+    try:
+        has_img = False
+        has_model_file = False
+        subdirs: List[Path] = []
+        for child in p.iterdir():
+            if not _visible(child):
+                continue
+            if child.is_file():
+                ext = child.suffix.lower()
+                if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
+                    has_model_file = True
+                elif ext in IMAGE_EXTS:
+                    has_img = True
+            elif child.is_dir() and child.name.lower() not in ("model", "images", "textures", "__macosx"):
+                subdirs.append(child)
+
+        if has_model_file:
+            return True
+        if has_img and not subdirs:
+            return True
+    except (PermissionError, OSError):
+        pass
+
     return False
+
+
+def find_asset_directories(root: Path) -> List[Path]:
+    """Find all asset directories under root, avoiding recursing inside asset directories."""
+    root = Path(root).resolve()
+    if not root.is_dir():
+        return []
+
+    if _is_asset_directory(root):
+        return [root]
+
+    assets: List[Path] = []
+
+    def _walk(curr: Path, depth: int):
+        if depth > 6:
+            return
+        subdirs: List[Path] = []
+        try:
+            for child in sorted(curr.iterdir()):
+                if child.is_dir() and _visible(child) and child.name.lower() not in ("model", "images", "textures", "__macosx"):
+                    subdirs.append(child)
+        except (PermissionError, OSError):
+            return
+
+        for d in subdirs:
+            if _is_asset_directory(d):
+                assets.append(d)
+            else:
+                _walk(d, depth + 1)
+
+    _walk(root, 0)
+    return assets
+
+
+def get_asset_hierarchy(root: Path, asset_dir: Path) -> Tuple[str, str, str]:
+    """
+    Given an asset directory and the library root, determine:
+    (Category, Subcategory, AssetTitle/FolderName).
+    Handles:
+      - root / <Category> / <Subcategory> / <Asset> (depth 3)
+      - root (which is Category, e.g. 'Scenes') / <Subcategory> / <Asset> (depth 2)
+      - root (which is Subcategory) / <Asset> (depth 1)
+      - arbitrary nested hierarchies
+    """
+    root = Path(root).resolve()
+    asset_dir = Path(asset_dir).resolve()
+    try:
+        rel = asset_dir.relative_to(root)
+        parts = rel.parts
+    except ValueError:
+        parts = (asset_dir.name,)
+
+    if len(parts) == 1:
+        cat = root.parent.name if (root.parent and root.parent.name and root.parent != root) else root.name
+        subcat = root.name
+        asset_name = parts[0]
+    elif len(parts) == 2:
+        cat = root.name
+        subcat = parts[0]
+        asset_name = parts[1]
+    else:
+        cat = parts[0]
+        subcat = "/".join(parts[1:-1])
+        asset_name = parts[-1]
+
+    return cat, subcat, asset_name
 
 
 def _iter_asset_files(asset: Path) -> List[Path]:
@@ -174,11 +296,12 @@ def _iter_asset_files(asset: Path) -> List[Path]:
     return out
 
 
-def scan_items(root: Path) -> Tuple[List[CopyItem], int]:
+def scan_items(root: Path, models_only: bool = True) -> Tuple[List[CopyItem], int]:
     """
-    Walk ``root/<Job>/<Category>/<Asset>`` (strictly depth 3 hierarchy)
-    and return (items_with_model, skipped_count).
-    Only items with models are returned.
+    Walk root and return (items, skipped_count).
+    Correctly recognizes categories and subcategories even when root is a single
+    Category folder (such as 'Scenes' or 'Furniture') or the parent library folder.
+    Only items with models are returned if models_only is True.
     """
     items: List[CopyItem] = []
     skipped = 0
@@ -186,46 +309,43 @@ def scan_items(root: Path) -> Tuple[List[CopyItem], int]:
     if not root.is_dir():
         return items, skipped
 
-    for job in sorted(root.iterdir()):
-        if not job.is_dir() or not _visible(job) or _looks_like_asset(job):
+    asset_dirs = find_asset_directories(root)
+
+    for asset in asset_dirs:
+        if models_only and not has_model(asset):
+            skipped += 1
             continue
-        for category in sorted(job.iterdir()):
-            if not category.is_dir() or not _visible(category) or _looks_like_asset(category):
-                continue
-            for asset in sorted(category.iterdir()):
-                if not asset.is_dir() or not _visible(asset):
-                    continue
-                if not has_model(asset):
-                    skipped += 1
-                    continue
 
-                fmt, is_zip, model_p = get_model_details(asset)
-                title = asset.name
-                meta_p = asset / "meta.json"
-                if meta_p.exists():
-                    try:
-                        meta_data = json.loads(meta_p.read_text(encoding="utf-8"))
-                        if meta_data.get("title"):
-                            title = meta_data.get("title")
-                    except Exception:
-                        pass
+        cat, subcat, default_title = get_asset_hierarchy(root, asset)
+        fmt, is_zip, model_p = get_model_details(asset)
 
-                files = _iter_asset_files(asset)
-                size = sum(f.stat().st_size for f in files)
+        title = default_title
+        meta_p = asset / "meta.json"
+        if meta_p.exists():
+            try:
+                meta_data = json.loads(meta_p.read_text(encoding="utf-8"))
+                if meta_data.get("title"):
+                    title = meta_data.get("title")
+            except Exception:
+                pass
 
-                items.append(
-                    CopyItem(
-                        job=job.name,
-                        category=category.name,
-                        asset=asset,
-                        title=title,
-                        total_bytes=size,
-                        files_count=len(files),
-                        model_format=fmt,
-                        is_zip=is_zip,
-                        model_path=model_p,
-                    )
-                )
+        files = _iter_asset_files(asset)
+        size = sum(f.stat().st_size for f in files)
+
+        items.append(
+            CopyItem(
+                job=cat,
+                category=subcat,
+                asset=asset,
+                title=title,
+                total_bytes=size,
+                files_count=len(files),
+                model_format=fmt,
+                is_zip=is_zip,
+                model_path=model_p,
+            )
+        )
+
     return items, skipped
 
 
@@ -258,6 +378,87 @@ def select_fit_disk(
     """Return unique_ids for items that fit within disk free space minus margin."""
     usable = max(0, disk_free_bytes - safety_margin_bytes)
     return select_storage_limit(items, usable)
+
+
+def select_balanced_mechanism(
+    items: List[CopyItem],
+    mode: str,  # "count", "size", or "storage"
+    limit_value: float,
+    strategy: str = "round_robin",
+    included_categories: Optional[Set[str]] = None,
+    included_subcategories: Optional[Set[Tuple[str, str]]] = None,
+) -> Set[str]:
+    """
+    Select items balancing across chosen categories / subcategories (round-robin).
+    Picks items round-robin from each category / subcategory until the target
+    GB size or file count limit is reached.
+    """
+    available = list(items)
+    if included_categories is not None:
+        available = [it for it in available if it.job in included_categories]
+    if included_subcategories is not None:
+        available = [it for it in available if (it.job, it.category) in included_subcategories]
+
+    groups: Dict[str, List[CopyItem]] = {}
+    for it in available:
+        groups.setdefault(it.job, []).append(it)
+
+    selected_ids: Set[str] = set()
+    normalized_mode = "storage" if mode in ("size", "storage") else "count"
+
+    if normalized_mode == "count":
+        target_count = max(0, int(limit_value))
+        queues = {k: list(v) for k, v in groups.items()}
+        active_keys = list(groups.keys())
+        while active_keys and len(selected_ids) < target_count:
+            for k in list(active_keys):
+                if not queues[k]:
+                    active_keys.remove(k)
+                    continue
+                item = queues[k].pop(0)
+                selected_ids.add(item.unique_id)
+                if len(selected_ids) >= target_count:
+                    break
+        return selected_ids
+
+    else:  # size / storage
+        target_bytes = max(0, int(limit_value))
+        current_bytes = 0
+        queues = {k: list(v) for k, v in groups.items()}
+        active_keys = list(groups.keys())
+
+        while active_keys:
+            added_any = False
+            for k in list(active_keys):
+                if not queues[k]:
+                    active_keys.remove(k)
+                    continue
+                item = queues[k][0]
+                if current_bytes + item.total_bytes <= target_bytes:
+                    queues[k].pop(0)
+                    selected_ids.add(item.unique_id)
+                    current_bytes += item.total_bytes
+                    added_any = True
+                else:
+                    found_smaller = False
+                    for idx, candidate in enumerate(queues[k]):
+                        if current_bytes + candidate.total_bytes <= target_bytes:
+                            queues[k].pop(idx)
+                            selected_ids.add(candidate.unique_id)
+                            current_bytes += candidate.total_bytes
+                            added_any = True
+                            found_smaller = True
+                            break
+                    if not found_smaller:
+                        active_keys.remove(k)
+
+            if not added_any:
+                break
+        return selected_ids
+
+
+select_balanced_items = select_balanced_mechanism
+
 
 
 # --------------------------------------------------------------------------
@@ -310,9 +511,9 @@ def find_orga_app(custom_path: Optional[str] = None) -> Optional[Path]:
     return None
 
 
-def get_app_size(app_path: Path) -> int:
+def get_app_size(app_path: Optional[Path]) -> int:
     """Calculate total size of the app."""
-    if not app_path.exists():
+    if not app_path or not app_path.exists():
         return 0
     if app_path.is_file():
         return app_path.stat().st_size
@@ -629,7 +830,7 @@ def run_copy(
         except Exception as e:
             log(f"App copy warning: {e}")
 
-    # 2. Copy Items (Assets with models)
+    # 2. Copy Items (Assets)
     for it in items:
         ctrl.checkpoint()
         item_label = f"{it.job} / {it.category} / {it.title}"
@@ -643,7 +844,7 @@ def run_copy(
         asset_files = _iter_asset_files(it.asset)
 
         # Separate model files from preview images and metadata
-        model_files = [f for f in asset_files if f.suffix.lower() in MODEL_EXTS]
+        model_files = [f for f in asset_files if f.suffix.lower() in MODEL_EXTS or f.suffix.lower() in ARCHIVE_EXTS]
         other_files = [f for f in asset_files if f not in model_files]
 
         # Copy previews and metadata
@@ -676,7 +877,7 @@ def run_copy(
                     log_cb=log,
                 )
             else:
-                # Non-zip model: save into /model/ dir as requested
+                # Non-zip model (or zip without unzipping): save into /model/ dir as requested
                 dst_m = dest_model_dir / mf.name
                 size = mf.stat().st_size
                 if skip_existing and dst_m.exists() and dst_m.stat().st_size == size:
@@ -767,7 +968,6 @@ def list_volumes() -> List[VolumeInfo]:
     seen_paths: Set[str] = set()
 
     if sys.platform == "darwin":
-        # macOS: Volumes under /Volumes
         vol_base = Path("/Volumes")
         if vol_base.is_dir():
             for vol in sorted(vol_base.iterdir()):
@@ -783,7 +983,6 @@ def list_volumes() -> List[VolumeInfo]:
                     continue
 
     elif sys.platform == "win32":
-        # Windows: Drive letters A-Z
         import string
         for letter in string.ascii_uppercase:
             drive_str = f"{letter}:\\"
@@ -796,7 +995,6 @@ def list_volumes() -> List[VolumeInfo]:
                     continue
 
     else:
-        # Linux: /media, /mnt, /run/media
         for base_str in ("/media", "/mnt", "/run/media"):
             base = Path(base_str)
             if not base.is_dir():
@@ -826,7 +1024,7 @@ def default_source() -> str:
         pass
 
     here = Path(__file__).resolve().parent.parent
-    for name in ("storage", "data"):
+    for name in ("storage", "data", "feeds"):
         p = here / name
         if p.is_dir():
             return str(p)
@@ -850,7 +1048,7 @@ QGroupBox {
     border: 1px solid #26334D;
     border-radius: 10px;
     margin-top: 18px;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 13px;
     padding-top: 14px;
 }
@@ -858,7 +1056,7 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 2px 10px;
+    padding: 3px 12px;
     background-color: #1E293B;
     border: 1px solid #26334D;
     border-radius: 6px;
@@ -894,6 +1092,7 @@ QPushButton#primaryBtn {
     background-color: #6366F1;
     border: 1px solid #4F46E5;
     color: #FFFFFF;
+    font-weight: 700;
 }
 
 QPushButton#primaryBtn:hover {
@@ -903,6 +1102,18 @@ QPushButton#primaryBtn:hover {
 QPushButton#primaryBtn:disabled {
     background-color: #3730A3;
     color: #94A3B8;
+}
+
+QPushButton#accentBtn {
+    background-color: #312E81;
+    border: 1px solid #4338CA;
+    color: #C7D2FE;
+    font-weight: 600;
+}
+
+QPushButton#accentBtn:hover {
+    background-color: #3730A3;
+    border-color: #6366F1;
 }
 
 QPushButton#pauseBtn {
@@ -942,7 +1153,7 @@ QComboBox::drop-down {
     padding-right: 6px;
 }
 
-QListWidget, QTableWidget {
+QListWidget, QTableWidget, QTreeWidget {
     background-color: #111827;
     border: 1px solid #26334D;
     border-radius: 8px;
@@ -950,16 +1161,16 @@ QListWidget, QTableWidget {
     outline: none;
 }
 
-QListWidget::item, QTableWidget::item {
-    padding: 6px 8px;
+QListWidget::item, QTableWidget::item, QTreeWidget::item {
+    padding: 5px 8px;
     border-bottom: 1px solid #161F30;
 }
 
-QListWidget::item:hover, QTableWidget::item:hover {
+QListWidget::item:hover, QTableWidget::item:hover, QTreeWidget::item:hover {
     background-color: #1E293B;
 }
 
-QListWidget::item:selected, QTableWidget::item:selected {
+QListWidget::item:selected, QTableWidget::item:selected, QTreeWidget::item:selected {
     background-color: #26334D;
     color: #FFFFFF;
 }
@@ -967,11 +1178,11 @@ QListWidget::item:selected, QTableWidget::item:selected {
 QHeaderView::section {
     background-color: #161F30;
     color: #94A3B8;
-    padding: 6px;
+    padding: 6px 8px;
     border: none;
     border-right: 1px solid #26334D;
     border-bottom: 1px solid #26334D;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 QProgressBar {
@@ -989,13 +1200,13 @@ QProgressBar::chunk {
     border-radius: 7px;
 }
 
-QCheckBox {
+QCheckBox, QRadioButton {
     spacing: 8px;
     color: #F8FAFC;
     font-weight: 500;
 }
 
-QCheckBox::indicator {
+QCheckBox::indicator, QRadioButton::indicator {
     width: 18px;
     height: 18px;
     border: 1px solid #3B4B6E;
@@ -1003,7 +1214,11 @@ QCheckBox::indicator {
     background-color: #161F30;
 }
 
-QCheckBox::indicator:checked {
+QRadioButton::indicator {
+    border-radius: 9px;
+}
+
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
     background-color: #6366F1;
     border-color: #6366F1;
 }
@@ -1041,14 +1256,14 @@ QScrollBar::handle:vertical:hover {
 # --------------------------------------------------------------------------
 
 def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS) -> int:
-    from PySide6.QtCore import QObject, Qt, QThread, Signal
-    from PySide6.QtGui import QColor, QFont, QIcon
+    from PySide6.QtCore import QObject, Qt, QThread, Signal, QUrl
+    from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon
     from PySide6.QtWidgets import (
-        QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
+        QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
         QFrame, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
         QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
-        QProgressBar, QPushButton, QSpinBox, QSplitter, QTableWidget,
-        QTableWidgetItem, QVBoxLayout, QWidget,
+        QProgressBar, QPushButton, QRadioButton, QSpinBox, QSplitter, QTableWidget,
+        QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
     )
 
     class Signals(QObject):
@@ -1105,10 +1320,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
 
     win = QWidget()
     win.setWindowTitle("orga+ Copy Tool — High-Speed Multi-Disk Exporter")
-    win.resize(1180, 840)
-    win.setMinimumSize(950, 700)
+    win.resize(1260, 880)
+    win.setMinimumSize(1020, 720)
 
-    # Set icon if available
+    # Set window icon if available
     icon_p = Path(__file__).resolve().parent.parent / "desktop" / "assets" / "icon.png"
     if icon_p.exists():
         win.setWindowIcon(QIcon(str(icon_p)))
@@ -1127,6 +1342,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         "app_path": find_orga_app(),
         "worker": None,
         "updating_table": False,
+        "updating_tree": False,
     }
 
     # ----------------------------------------------------------------------
@@ -1138,11 +1354,18 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     header_layout.setContentsMargins(12, 6, 12, 6)
 
     title_box = QVBoxLayout()
+    title_row = QHBoxLayout()
     title_lbl = QLabel("orga+ Copy Tool")
     title_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #F8FAFC;")
-    subtitle_lbl = QLabel("Fast Multi-Disk Library Exporter • Models Only")
+    badge_lbl = QLabel("v2.0 Enhanced")
+    badge_lbl.setStyleSheet("background-color: #312E81; color: #818CF8; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;")
+    title_row.addWidget(title_lbl)
+    title_row.addWidget(badge_lbl)
+    title_row.addStretch(1)
+
+    subtitle_lbl = QLabel("High-Speed Library Exporter & Smart Drive Provisioner")
     subtitle_lbl.setStyleSheet("font-size: 11px; color: #818CF8; font-weight: 600;")
-    title_box.addWidget(title_lbl)
+    title_box.addLayout(title_row)
     title_box.addWidget(subtitle_lbl)
     header_layout.addLayout(title_box)
 
@@ -1153,10 +1376,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     header_layout.addWidget(lib_lbl)
 
     src_display = QLabel(state["source"])
-    src_display.setStyleSheet("font-weight: 600; color: #38BDF8; background-color: #161F30; padding: 4px 10px; border-radius: 6px;")
+    src_display.setStyleSheet("font-weight: 600; color: #38BDF8; background-color: #161F30; padding: 5px 12px; border-radius: 6px; border: 1px solid #26334D;")
     header_layout.addWidget(src_display)
 
-    change_src_btn = QPushButton("Change…")
+    change_src_btn = QPushButton("📁 Change…")
     header_layout.addWidget(change_src_btn)
 
     rescan_btn = QPushButton("🔄 Rescan")
@@ -1165,20 +1388,21 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     main_layout.addWidget(header_frame)
 
     # ----------------------------------------------------------------------
-    # Splitter: Left Sidebar (Disks, Limits, Options) | Right (Items Table)
+    # Splitter: Left Sidebar (Disks, Mechanism, Options) | Right (Categories + Table)
     # ----------------------------------------------------------------------
     splitter = QSplitter(Qt.Horizontal)
 
-    # LEFT PANEL
+    # ========================== LEFT PANEL ===============================
     left_panel = QWidget()
     left_layout = QVBoxLayout(left_panel)
-    left_layout.setContentsMargins(0, 0, 6, 0)
+    left_layout.setContentsMargins(0, 0, 8, 0)
     left_layout.setSpacing(10)
 
-    # 1. Disks Card
+    # 1. Target Disks Card
     disks_group = QGroupBox("1. Choose Target Disks")
     disks_layout = QVBoxLayout(disks_group)
     disks_layout.setContentsMargins(10, 14, 10, 10)
+    disks_layout.setSpacing(8)
 
     disks_ctrl_row = QHBoxLayout()
     refresh_disks_btn = QPushButton("🔄 Refresh")
@@ -1190,7 +1414,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     disks_layout.addLayout(disks_ctrl_row)
 
     disks_list = QListWidget()
-    disks_list.setMaximumHeight(140)
+    disks_list.setMaximumHeight(130)
     disks_layout.addWidget(disks_list)
 
     disks_status_lbl = QLabel("No disk selected")
@@ -1199,46 +1423,74 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
 
     left_layout.addWidget(disks_group)
 
-    # 2. Selection & Limits Card
-    limits_group = QGroupBox("2. Selection Modes & Limits")
-    limits_layout = QVBoxLayout(limits_group)
-    limits_layout.setContentsMargins(10, 14, 10, 10)
-    limits_layout.setSpacing(8)
+    # 2. Copy Mechanism & Selection Limits Card
+    mechanism_group = QGroupBox("2. Copy Mechanism & Limits")
+    mechanism_layout = QVBoxLayout(mechanism_group)
+    mechanism_layout.setContentsMargins(10, 14, 10, 10)
+    mechanism_layout.setSpacing(10)
 
-    # Exact count mode
-    count_row = QHBoxLayout()
-    count_spin = QSpinBox()
-    count_spin.setRange(1, 100000)
-    count_spin.setValue(50)
-    count_btn = QPushButton("Select Exact Count")
-    count_row.addWidget(QLabel("Count:"))
-    count_row.addWidget(count_spin, 1)
-    count_row.addWidget(count_btn)
-    limits_layout.addLayout(count_row)
+    mode_btn_group = QButtonGroup(win)
+    rb_storage = QRadioButton("By Storage Limit (GB / MB)")
+    rb_count = QRadioButton("By Number of Files / Items")
+    rb_all = QRadioButton("Select All in Chosen Categories")
+    rb_storage.setChecked(True)
+    mode_btn_group.addButton(rb_storage)
+    mode_btn_group.addButton(rb_count)
+    mode_btn_group.addButton(rb_all)
 
-    # Storage limit mode
-    storage_row = QHBoxLayout()
+    mechanism_layout.addWidget(rb_storage)
+
+    # Storage limit inputs row
+    storage_input_row = QHBoxLayout()
+    storage_input_row.setContentsMargins(16, 0, 0, 4)
     storage_spin = QDoubleSpinBox()
     storage_spin.setRange(0.1, 100000.0)
     storage_spin.setValue(16.0)
     storage_spin.setDecimals(1)
     unit_combo = QComboBox()
     unit_combo.addItems(["GB", "MB"])
-    storage_btn = QPushButton("Select Storage Limit")
-    storage_row.addWidget(QLabel("Limit:"))
-    storage_row.addWidget(storage_spin, 1)
-    storage_row.addWidget(unit_combo)
-    storage_row.addWidget(storage_btn)
-    limits_layout.addLayout(storage_row)
+    storage_input_row.addWidget(QLabel("Limit:"))
+    storage_input_row.addWidget(storage_spin, 1)
+    storage_input_row.addWidget(unit_combo)
+    mechanism_layout.addLayout(storage_input_row)
 
-    # Fit disk button
-    fit_disk_btn = QPushButton("⚡ Auto-Fit to Smallest Selected Disk")
-    fit_disk_btn.setStyleSheet("background-color: #312E81; color: #C7D2FE; border-color: #4338CA;")
-    limits_layout.addWidget(fit_disk_btn)
+    mechanism_layout.addWidget(rb_count)
 
-    left_layout.addWidget(limits_group)
+    # Count limit inputs row
+    count_input_row = QHBoxLayout()
+    count_input_row.setContentsMargins(16, 0, 0, 4)
+    count_spin = QSpinBox()
+    count_spin.setRange(1, 100000)
+    count_spin.setValue(50)
+    count_input_row.addWidget(QLabel("Items:"))
+    count_input_row.addWidget(count_spin, 1)
+    mechanism_layout.addLayout(count_input_row)
 
-    # 3. Options & Automation Card
+    mechanism_layout.addWidget(rb_all)
+
+    # Balanced distribution option
+    balanced_cb = QCheckBox("Distribute evenly across chosen categories")
+    balanced_cb.setChecked(True)
+    balanced_cb.setToolTip(
+        "Cycles through each selected category/subcategory taking items round-robin until the target limit is reached."
+    )
+    balanced_cb.setStyleSheet("color: #818CF8; font-weight: 600;")
+    mechanism_layout.addWidget(balanced_cb)
+
+    # Action buttons
+    limit_action_row = QHBoxLayout()
+    apply_limit_btn = QPushButton("⚡ Apply Selection Limit")
+    apply_limit_btn.setObjectName("primaryBtn")
+    limit_action_row.addWidget(apply_limit_btn)
+    mechanism_layout.addLayout(limit_action_row)
+
+    fit_disk_btn = QPushButton("💾 Auto-Fit to Smallest Selected Disk")
+    fit_disk_btn.setObjectName("accentBtn")
+    mechanism_layout.addWidget(fit_disk_btn)
+
+    left_layout.addWidget(mechanism_group)
+
+    # 3. Automation & Export Settings Card
     options_group = QGroupBox("3. Automation & Settings")
     options_layout = QVBoxLayout(options_group)
     options_layout.setContentsMargins(10, 14, 10, 10)
@@ -1270,6 +1522,11 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     resume_cb.setChecked(True)
     options_layout.addWidget(resume_cb)
 
+    # Only assets containing models filter toggle
+    models_only_cb = QCheckBox("Only items with 3D models (.skp, .rar, .zip)")
+    models_only_cb.setChecked(True)
+    options_layout.addWidget(models_only_cb)
+
     # Streams
     stream_row = QHBoxLayout()
     stream_row.addWidget(QLabel("Parallel copy streams:"))
@@ -1284,48 +1541,121 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     left_layout.addStretch(1)
     splitter.addWidget(left_panel)
 
-    # RIGHT PANEL (Items Table & Selection Controls)
+    # ========================== RIGHT PANEL ==============================
     right_panel = QWidget()
     right_layout = QVBoxLayout(right_panel)
     right_layout.setContentsMargins(6, 0, 0, 0)
     right_layout.setSpacing(8)
 
-    # Filter / Search bar
-    filter_row = QHBoxLayout()
-    search_input = QLineEdit()
-    search_input.setPlaceholderText("🔍 Search by title, subcategory, format…")
-    category_combo = QComboBox()
-    category_combo.addItem("All Categories")
-    filter_row.addWidget(search_input, 1)
-    filter_row.addWidget(category_combo)
+    # Section A: Categories & Subcategories Tree Selector
+    cat_group = QGroupBox("Categories & Subcategories to Include")
+    cat_layout = QVBoxLayout(cat_group)
+    cat_layout.setContentsMargins(10, 14, 10, 8)
+    cat_layout.setSpacing(6)
 
-    sel_all_btn = QPushButton("Select All")
-    sel_none_btn = QPushButton("Select None")
-    invert_sel_btn = QPushButton("Invert")
-    filter_row.addWidget(sel_all_btn)
-    filter_row.addWidget(sel_none_btn)
-    filter_row.addWidget(invert_sel_btn)
-    right_layout.addLayout(filter_row)
+    cat_toolbar = QHBoxLayout()
+    cat_lbl = QLabel("Check categories & subcategories to include in the export:")
+    cat_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+    sel_all_cats_btn = QPushButton("Select All")
+    sel_none_cats_btn = QPushButton("Clear All")
+    expand_cats_btn = QPushButton("Expand All")
+    cat_toolbar.addWidget(cat_lbl, 1)
+    cat_toolbar.addWidget(sel_all_cats_btn)
+    cat_toolbar.addWidget(sel_none_cats_btn)
+    cat_toolbar.addWidget(expand_cats_btn)
+    cat_layout.addLayout(cat_toolbar)
 
-    # Summary pill
+    category_tree = QTreeWidget()
+    category_tree.setHeaderLabels(["Category / Subcategory", "Items & Size"])
+    category_tree.setColumnCount(2)
+    category_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+    category_tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+    category_tree.setMaximumHeight(160)
+    cat_layout.addWidget(category_tree)
+
+    right_layout.addWidget(cat_group)
+
+    # Section B: Prominent Current Size of Selected Objects Metric Banner
     summary_frame = QFrame()
-    summary_frame.setStyleSheet("background-color: #161F30; border-radius: 8px; border: 1px solid #26334D; padding: 4px;")
+    summary_frame.setStyleSheet("""
+        QFrame#summaryBanner {
+            background-color: #111827;
+            border: 1px solid #26334D;
+            border-radius: 10px;
+        }
+    """)
+    summary_frame.setObjectName("summaryBanner")
     summary_layout = QHBoxLayout(summary_frame)
-    summary_layout.setContentsMargins(12, 4, 12, 4)
+    summary_layout.setContentsMargins(16, 10, 16, 10)
+    summary_layout.setSpacing(20)
 
-    selection_status_lbl = QLabel("Selected: 0 items (0 B)")
-    selection_status_lbl.setStyleSheet("font-weight: 700; color: #F8FAFC;")
-    capacity_pill_lbl = QLabel("✓ Storage Status OK")
-    capacity_pill_lbl.setStyleSheet("color: #10B981; font-weight: 600;")
-    summary_layout.addWidget(selection_status_lbl)
+    # Metric 1: Selected Count
+    count_block = QVBoxLayout()
+    count_title = QLabel("SELECTED OBJECTS")
+    count_title.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
+    count_val_lbl = QLabel("0 items")
+    count_val_lbl.setStyleSheet("color: #F8FAFC; font-size: 16px; font-weight: 800;")
+    count_block.addWidget(count_title)
+    count_block.addWidget(count_val_lbl)
+    summary_layout.addLayout(count_block)
+
+    div1 = QFrame()
+    div1.setFrameShape(QFrame.VLine)
+    div1.setStyleSheet("color: #26334D;")
+    summary_layout.addWidget(div1)
+
+    # Metric 2: Current Size of Selected Objects
+    size_block = QVBoxLayout()
+    size_title = QLabel("CURRENT SIZE OF SELECTED OBJECTS")
+    size_title.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
+    size_val_lbl = QLabel("0 B")
+    size_val_lbl.setStyleSheet("color: #818CF8; font-size: 16px; font-weight: 800;")
+    size_block.addWidget(size_title)
+    size_block.addWidget(size_val_lbl)
+    summary_layout.addLayout(size_block)
+
+    div2 = QFrame()
+    div2.setFrameShape(QFrame.VLine)
+    div2.setStyleSheet("color: #26334D;")
+    summary_layout.addWidget(div2)
+
+    # Metric 3: Target Disk Capacity Status
+    disk_block = QVBoxLayout()
+    disk_title = QLabel("TARGET DISK CAPACITY STATUS")
+    disk_title.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
+    disk_val_lbl = QLabel("Select a target disk")
+    disk_val_lbl.setStyleSheet("color: #10B981; font-size: 14px; font-weight: 700;")
+    disk_block.addWidget(disk_title)
+    disk_block.addWidget(disk_val_lbl)
+    summary_layout.addLayout(disk_block)
+
     summary_layout.addStretch(1)
-    summary_layout.addWidget(capacity_pill_lbl)
     right_layout.addWidget(summary_frame)
 
-    # Items table
+    # Section C: Items Table
+    table_filter_row = QHBoxLayout()
+    search_input = QLineEdit()
+    search_input.setPlaceholderText("🔍 Search by title, subcategory, format…")
+    format_combo = QComboBox()
+    format_combo.addItem("All Formats")
+    format_combo.addItems(["SKP", "RAR", "ZIP", "FBX", "OBJ", "BLEND"])
+
+    sel_all_btn = QPushButton("Select All Filtered")
+    sel_none_btn = QPushButton("Clear Filtered")
+    invert_sel_btn = QPushButton("Invert")
+
+    table_filter_row.addWidget(search_input, 1)
+    table_filter_row.addWidget(format_combo)
+    table_filter_row.addWidget(sel_all_btn)
+    table_filter_row.addWidget(sel_none_btn)
+    table_filter_row.addWidget(invert_sel_btn)
+    right_layout.addLayout(table_filter_row)
+
     items_table = QTableWidget()
-    items_table.setColumnCount(6)
-    items_table.setHorizontalHeaderLabels(["", "Category", "Subcategory", "Asset Title", "Format", "Size"])
+    items_table.setColumnCount(7)
+    items_table.setHorizontalHeaderLabels([
+        "", "Category", "Subcategory", "Asset Title", "Format", "Files", "Size"
+    ])
     items_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
     items_table.setColumnWidth(0, 36)
     items_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -1333,6 +1663,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     items_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
     items_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
     items_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+    items_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
     items_table.verticalHeader().setVisible(False)
     items_table.setSelectionBehavior(QTableWidget.SelectRows)
     right_layout.addWidget(items_table, 1)
@@ -1351,7 +1682,6 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     bottom_layout.setContentsMargins(12, 10, 12, 10)
     bottom_layout.setSpacing(8)
 
-    # Status & Speed row
     status_row = QHBoxLayout()
     status_lbl = QLabel("Ready.")
     status_lbl.setStyleSheet("font-weight: 600; color: #38BDF8;")
@@ -1361,32 +1691,30 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     status_row.addWidget(speed_eta_lbl)
     bottom_layout.addLayout(status_row)
 
-    # Progress bar
     bar = QProgressBar()
     bar.setRange(0, 1000)
     bar.setValue(0)
     bar.setFormat("%p%")
     bottom_layout.addWidget(bar)
 
-    # Control buttons row
     btn_row = QHBoxLayout()
     start_btn = QPushButton("▶ Start Copy to Disks")
     start_btn.setObjectName("primaryBtn")
-    start_btn.setMinimumHeight(38)
-    start_btn.setMinimumWidth(160)
+    start_btn.setMinimumHeight(40)
+    start_btn.setMinimumWidth(180)
 
     pause_btn = QPushButton("⏸ Pause")
     pause_btn.setObjectName("pauseBtn")
-    pause_btn.setMinimumHeight(38)
+    pause_btn.setMinimumHeight(40)
     pause_btn.setEnabled(False)
 
     stop_btn = QPushButton("⏹ Stop")
     stop_btn.setObjectName("stopBtn")
-    stop_btn.setMinimumHeight(38)
+    stop_btn.setMinimumHeight(40)
     stop_btn.setEnabled(False)
 
     toggle_log_btn = QPushButton("📋 Activity Log")
-    toggle_log_btn.setMinimumHeight(38)
+    toggle_log_btn.setMinimumHeight(40)
 
     btn_row.addWidget(start_btn)
     btn_row.addWidget(pause_btn)
@@ -1395,11 +1723,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     btn_row.addWidget(toggle_log_btn)
     bottom_layout.addLayout(btn_row)
 
-    # Collapsible log view
     log_view = QPlainTextEdit()
     log_view.setReadOnly(True)
     log_view.setMaximumBlockCount(3000)
-    log_view.setFixedHeight(130)
+    log_view.setFixedHeight(120)
     log_view.setVisible(False)
     bottom_layout.addWidget(log_view)
 
@@ -1418,7 +1745,9 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         for i in range(disks_list.count()):
             item = disks_list.item(i)
             if item.checkState() == Qt.Checked:
-                chosen.append(item.data(Qt.UserRole))
+                data = item.data(Qt.UserRole)
+                if data:
+                    chosen.append(data)
         return chosen
 
     def refresh_disks() -> None:
@@ -1428,7 +1757,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
 
         for v in vols:
             item = QListWidgetItem(f"💾 {v.label}  ({v.path})  —  {human_size(v.free)} free / {human_size(v.total)}")
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             item.setCheckState(Qt.Checked if v.is_removable else Qt.Unchecked)
             item.setData(Qt.UserRole, v)
             disks_list.addItem(item)
@@ -1451,14 +1780,26 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             disks_status_lbl.setStyleSheet("color: #10B981; font-weight: 600;")
         update_selection_summary()
 
+    def get_checked_subcategories() -> Set[Tuple[str, str]]:
+        checked: Set[Tuple[str, str]] = set()
+        for i in range(category_tree.topLevelItemCount()):
+            parent = category_tree.topLevelItem(i)
+            cat_name = parent.data(0, Qt.UserRole)[1]
+            for j in range(parent.childCount()):
+                child = parent.child(j)
+                if child.checkState(0) == Qt.Checked:
+                    sub_name = child.data(0, Qt.UserRole)[2]
+                    checked.add((cat_name, sub_name))
+        return checked
+
     def get_selected_items() -> List[CopyItem]:
         selected = []
         for r in range(items_table.rowCount()):
             cb_item = items_table.item(r, 0)
             if cb_item and cb_item.checkState() == Qt.Checked:
-                item_data = cb_item.data(Qt.UserRole)
-                if item_data:
-                    selected.append(item_data)
+                it = cb_item.data(Qt.UserRole)
+                if it:
+                    selected.append(it)
         return selected
 
     def update_selection_summary() -> None:
@@ -1467,40 +1808,100 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         app_size = get_app_size(state["app_path"]) if (auto_app_cb.isChecked() and state["app_path"]) else 0
         grand_total = total_bytes + app_size
 
-        selection_status_lbl.setText(
-            f"Selected: {len(selected)} / {len(state['items'])} items "
-            f"({human_size(total_bytes)}" + (f" + {human_size(app_size)} app" if app_size else "") + ")"
+        count_val_lbl.setText(f"{len(selected)} items  (of {len(state['items'])})")
+        size_val_lbl.setText(
+            f"{human_size(total_bytes)}" + (f" + {human_size(app_size)} App" if app_size else "")
         )
 
         chosen_disks = get_selected_disks()
         if not chosen_disks:
-            capacity_pill_lbl.setText("Select target disk")
-            capacity_pill_lbl.setStyleSheet("color: #F59E0B; font-weight: 600;")
+            disk_val_lbl.setText("Select target disk")
+            disk_val_lbl.setStyleSheet("color: #F59E0B; font-size: 14px; font-weight: 700;")
             return
 
         min_free = min(d.free for d in chosen_disks)
+        disk_label = chosen_disks[0].label if len(chosen_disks) == 1 else f"{len(chosen_disks)} disks"
+
         if grand_total > min_free:
             over = grand_total - min_free
-            capacity_pill_lbl.setText(f"⚠️ Exceeds space by {human_size(over)}!")
-            capacity_pill_lbl.setStyleSheet("color: #EF4444; font-weight: 700;")
+            disk_val_lbl.setText(f"⚠️ Exceeds space by {human_size(over)}! (Free: {human_size(min_free)})")
+            disk_val_lbl.setStyleSheet("color: #EF4444; font-size: 14px; font-weight: 700;")
         else:
             remaining = min_free - grand_total
-            capacity_pill_lbl.setText(f"✓ Fits comfortably ({human_size(remaining)} remaining)")
-            capacity_pill_lbl.setStyleSheet("color: #10B981; font-weight: 600;")
+            disk_val_lbl.setText(f"✓ Fits comfortably ({human_size(remaining)} remaining on {disk_label})")
+            disk_val_lbl.setStyleSheet("color: #10B981; font-size: 14px; font-weight: 700;")
+
+    def populate_category_tree() -> None:
+        state["updating_tree"] = True
+        category_tree.clear()
+
+        # Group items by Category -> Subcategory
+        cat_map: Dict[str, Dict[str, List[CopyItem]]] = {}
+        for it in state["items"]:
+            cat_map.setdefault(it.job, {}).setdefault(it.category, []).append(it)
+
+        for cat_name in sorted(cat_map.keys()):
+            sub_map = cat_map[cat_name]
+            cat_items = [it for subs in sub_map.values() for it in subs]
+            cat_bytes = sum(it.total_bytes for it in cat_items)
+
+            parent_item = QTreeWidgetItem(category_tree)
+            parent_item.setText(0, f"📁 {cat_name}")
+            parent_item.setText(1, f"{len(cat_items)} items • {human_size(cat_bytes)}")
+            parent_item.setFlags(parent_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            parent_item.setCheckState(0, Qt.Checked)
+            parent_item.setData(0, Qt.UserRole, ("category", cat_name))
+
+            for sub_name in sorted(sub_map.keys()):
+                subs_items = sub_map[sub_name]
+                sub_bytes = sum(it.total_bytes for it in subs_items)
+                child_item = QTreeWidgetItem(parent_item)
+                child_item.setText(0, f"  📂 {sub_name}")
+                child_item.setText(1, f"{len(subs_items)} items • {human_size(sub_bytes)}")
+                child_item.setFlags(child_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                child_item.setCheckState(0, Qt.Checked)
+                child_item.setData(0, Qt.UserRole, ("subcategory", cat_name, sub_name))
+
+        category_tree.expandAll()
+        state["updating_tree"] = False
+
+    def on_tree_item_changed(item: QTreeWidgetItem, col: int) -> None:
+        if col != 0 or state["updating_tree"]:
+            return
+        state["updating_tree"] = True
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            state["updating_tree"] = False
+            return
+
+        node_type = data[0]
+        if node_type == "category":
+            cs = item.checkState(0)
+            for i in range(item.childCount()):
+                item.child(i).setCheckState(0, cs)
+        elif node_type == "subcategory":
+            parent = item.parent()
+            if parent:
+                checked_cnt = 0
+                for i in range(parent.childCount()):
+                    if parent.child(i).checkState(0) == Qt.Checked:
+                        checked_cnt += 1
+                if checked_cnt == parent.childCount():
+                    parent.setCheckState(0, Qt.Checked)
+                elif checked_cnt == 0:
+                    parent.setCheckState(0, Qt.Unchecked)
+                else:
+                    parent.setCheckState(0, Qt.PartiallyChecked)
+
+        state["updating_tree"] = False
+        apply_category_filter_to_table()
+        update_selection_summary()
 
     def populate_table() -> None:
         state["updating_table"] = True
         items_table.setRowCount(0)
-        category_combo.blockSignals(True)
-        category_combo.clear()
-        category_combo.addItem("All Categories")
-
-        categories = sorted({it.job for it in state["items"]})
-        for c in categories:
-            category_combo.addItem(c)
-        category_combo.blockSignals(False)
-
         items_table.setRowCount(len(state["items"]))
+
         for r, it in enumerate(state["items"]):
             # Checkbox col
             cb_item = QTableWidgetItem()
@@ -1530,22 +1931,33 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             f_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             items_table.setItem(r, 4, f_item)
 
+            # Files Count
+            fc_item = QTableWidgetItem(str(it.files_count))
+            fc_item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+            fc_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            items_table.setItem(r, 5, fc_item)
+
             # Size
             s_item = QTableWidgetItem(human_size(it.total_bytes))
             s_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             s_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            items_table.setItem(r, 5, s_item)
+            items_table.setItem(r, 6, s_item)
 
         state["updating_table"] = False
         update_selection_summary()
 
-    def filter_table() -> None:
+    def apply_category_filter_to_table() -> None:
+        checked_subcats = get_checked_subcategories()
         query = search_input.text().strip().lower()
-        cat_filter = category_combo.currentText()
+        fmt_filter = format_combo.currentText().upper()
 
+        state["updating_table"] = True
         for r in range(items_table.rowCount()):
-            it = items_table.item(r, 0).data(Qt.UserRole)
-            matches_cat = (cat_filter == "All Categories") or (it.job == cat_filter)
+            cb_item = items_table.item(r, 0)
+            it: CopyItem = cb_item.data(Qt.UserRole)
+
+            in_checked_subcats = (it.job, it.category) in checked_subcats
+            matches_fmt = (fmt_filter == "ALL FORMATS") or (fmt_filter in it.model_format.upper())
             matches_query = (
                 not query
                 or (query in it.title.lower())
@@ -1553,66 +1965,111 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
                 or (query in it.job.lower())
                 or (query in it.model_format.lower())
             )
-            items_table.setRowHidden(r, not (matches_cat and matches_query))
+
+            is_visible = in_checked_subcats and matches_fmt and matches_query
+            items_table.setRowHidden(r, not is_visible)
+
+            # If row is outside checked subcategories, uncheck it
+            if not in_checked_subcats:
+                cb_item.setCheckState(Qt.Unchecked)
+
+        state["updating_table"] = False
+        update_selection_summary()
+
+    def filter_table() -> None:
+        apply_category_filter_to_table()
 
     def load_library(path_str: str) -> None:
         state["source"] = path_str
         src_display.setText(path_str)
         log_msg(f"Scanning library: {path_str}")
 
-        items, skipped = scan_items(Path(path_str))
+        models_only = models_only_cb.isChecked()
+        items, skipped = scan_items(Path(path_str), models_only=models_only)
+
+        # If zero items found with models_only, but assets exist without models, prompt or fallback
+        if not items and models_only:
+            all_items, _ = scan_items(Path(path_str), models_only=False)
+            if all_items:
+                log_msg(f"Notice: Found {len(all_items)} asset folders with preview images, but none containing 3D models.")
+                items = all_items
+                models_only_cb.blockSignals(True)
+                models_only_cb.setChecked(False)
+                models_only_cb.blockSignals(False)
+
         state["items"] = items
+        populate_category_tree()
         populate_table()
 
         total_bytes = sum(it.total_bytes for it in items)
         log_msg(
-            f"Scan complete: {len(items)} items with 3D models ({human_size(total_bytes)}). "
-            f"{skipped} items skipped (no model)."
+            f"Scan complete: {len(items)} items ({human_size(total_bytes)}) discovered. "
+            f"{skipped} non-model folders skipped."
         )
 
     # ----------------------------------------------------------------------
     # Selection Mode Actions
     # ----------------------------------------------------------------------
 
-    def apply_exact_count() -> None:
-        count = count_spin.value()
-        state["updating_table"] = True
-        matched = 0
-        for r in range(items_table.rowCount()):
-            if not items_table.isRowHidden(r):
-                cb_item = items_table.item(r, 0)
-                if matched < count:
-                    cb_item.setCheckState(Qt.Checked)
-                    matched += 1
-                else:
-                    cb_item.setCheckState(Qt.Unchecked)
-        state["updating_table"] = False
-        update_selection_summary()
-        log_msg(f"Applied exact count: selected {matched} items.")
+    def apply_selection_limit() -> None:
+        checked_subcats = get_checked_subcategories()
+        if not checked_subcats:
+            QMessageBox.warning(win, "No Categories Selected", "Please select at least one category or subcategory from the tree.")
+            return
 
-    def apply_storage_limit() -> None:
-        unit_mult = 1024 * 1024 * 1024 if unit_combo.currentText() == "GB" else 1024 * 1024
-        limit_bytes = int(storage_spin.value() * unit_mult)
+        candidate_items = [it for it in state["items"] if (it.job, it.category) in checked_subcats]
+        if not candidate_items:
+            QMessageBox.warning(win, "No Items", "No items available in the selected categories.")
+            return
+
+        is_balanced = balanced_cb.isChecked()
+
+        if rb_count.isChecked():
+            limit_cnt = count_spin.value()
+            if is_balanced:
+                selected_ids = select_balanced_items(
+                    candidate_items,
+                    mode="count",
+                    limit_value=limit_cnt,
+                    selected_subcategories=checked_subcats,
+                    group_by="category",
+                )
+            else:
+                selected_ids = select_exact_count(candidate_items, limit_cnt)
+
+            selected_bytes = sum(it.total_bytes for it in candidate_items if it.unique_id in selected_ids)
+            log_msg(f"Applied item limit: selected {len(selected_ids)} items ({human_size(selected_bytes)}) {'(balanced round-robin)' if is_balanced else '(sequential)'}.")
+
+        elif rb_storage.isChecked():
+            mult = 1024 * 1024 * 1024 if unit_combo.currentText() == "GB" else 1024 * 1024
+            limit_bytes = int(storage_spin.value() * mult)
+            if is_balanced:
+                selected_ids = select_balanced_items(
+                    candidate_items,
+                    mode="storage",
+                    limit_value=limit_bytes,
+                    selected_subcategories=checked_subcats,
+                    group_by="category",
+                )
+            else:
+                selected_ids = select_storage_limit(candidate_items, limit_bytes)
+
+            selected_bytes = sum(it.total_bytes for it in candidate_items if it.unique_id in selected_ids)
+            log_msg(f"Applied storage limit: selected {len(selected_ids)} items ({human_size(selected_bytes)}) within {storage_spin.value()} {unit_combo.currentText()} {'(balanced round-robin)' if is_balanced else '(sequential)'}.")
+
+        else:  # rb_all
+            selected_ids = {it.unique_id for it in candidate_items}
+            selected_bytes = sum(it.total_bytes for it in candidate_items)
+            log_msg(f"Selected all {len(selected_ids)} items ({human_size(selected_bytes)}) across chosen categories.")
 
         state["updating_table"] = True
-        accum = 0
-        selected_count = 0
         for r in range(items_table.rowCount()):
             cb_item = items_table.item(r, 0)
-            if items_table.isRowHidden(r):
-                cb_item.setCheckState(Qt.Unchecked)
-                continue
-            it = cb_item.data(Qt.UserRole)
-            if accum + it.total_bytes <= limit_bytes:
-                cb_item.setCheckState(Qt.Checked)
-                accum += it.total_bytes
-                selected_count += 1
-            else:
-                cb_item.setCheckState(Qt.Unchecked)
-
+            it: CopyItem = cb_item.data(Qt.UserRole)
+            cb_item.setCheckState(Qt.Checked if it.unique_id in selected_ids else Qt.Unchecked)
         state["updating_table"] = False
+
         update_selection_summary()
-        log_msg(f"Applied storage limit: selected {selected_count} items ({human_size(accum)}) within {storage_spin.value()} {unit_combo.currentText()}.")
 
     def apply_fit_disk() -> None:
         chosen = get_selected_disks()
@@ -1625,25 +2082,35 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         safety_reserve = 500 * 1024 * 1024 + app_size
         usable = max(0, min_free - safety_reserve)
 
+        usable_gb = usable / (1024 * 1024 * 1024)
+        storage_spin.setValue(max(0.1, round(usable_gb, 1)))
+        unit_combo.setCurrentText("GB")
+        rb_storage.setChecked(True)
+
+        checked_subcats = get_checked_subcategories()
+        candidate_items = [it for it in state["items"] if (it.job, it.category) in checked_subcats]
+
+        if balanced_cb.isChecked():
+            selected_ids = select_balanced_items(
+                candidate_items,
+                mode="storage",
+                limit_value=usable,
+                selected_subcategories=checked_subcats,
+                group_by="category",
+            )
+        else:
+            selected_ids = select_storage_limit(candidate_items, usable)
+
         state["updating_table"] = True
-        accum = 0
-        selected_count = 0
         for r in range(items_table.rowCount()):
             cb_item = items_table.item(r, 0)
-            if items_table.isRowHidden(r):
-                cb_item.setCheckState(Qt.Unchecked)
-                continue
             it = cb_item.data(Qt.UserRole)
-            if accum + it.total_bytes <= usable:
-                cb_item.setCheckState(Qt.Checked)
-                accum += it.total_bytes
-                selected_count += 1
-            else:
-                cb_item.setCheckState(Qt.Unchecked)
-
+            cb_item.setCheckState(Qt.Checked if it.unique_id in selected_ids else Qt.Unchecked)
         state["updating_table"] = False
+
         update_selection_summary()
-        log_msg(f"Auto-fit to disk free space: selected {selected_count} items ({human_size(accum)}), leaving safety margin on all selected disks.")
+        selected_bytes = sum(it.total_bytes for it in candidate_items if it.unique_id in selected_ids)
+        log_msg(f"Auto-fit to disk free space: selected {len(selected_ids)} items ({human_size(selected_bytes)}), leaving safety margin on all selected disks.")
 
     # ----------------------------------------------------------------------
     # Copy Process Controls
@@ -1657,9 +2124,11 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         rescan_btn.setEnabled(not running)
         refresh_disks_btn.setEnabled(not running)
         add_disk_btn.setEnabled(not running)
-        count_btn.setEnabled(not running)
-        storage_btn.setEnabled(not running)
+        apply_limit_btn.setEnabled(not running)
         fit_disk_btn.setEnabled(not running)
+        sel_all_cats_btn.setEnabled(not running)
+        sel_none_cats_btn.setEnabled(not running)
+        expand_cats_btn.setEnabled(not running)
         sel_all_btn.setEnabled(not running)
         sel_none_btn.setEnabled(not running)
         invert_sel_btn.setEnabled(not running)
@@ -1703,10 +2172,9 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
 
         selected_items = get_selected_items()
         if not selected_items:
-            QMessageBox.warning(win, "No Items Selected", "Please select at least one item with a model to copy.")
+            QMessageBox.warning(win, "No Items Selected", "Please select at least one item to copy.")
             return
 
-        # Check space
         total_needed = sum(it.total_bytes for it in selected_items)
         app_size = get_app_size(state["app_path"]) if (auto_app_cb.isChecked() and state["app_path"]) else 0
         grand_total = total_needed + app_size
@@ -1764,21 +2232,31 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     select_all_disks_btn.clicked.connect(lambda: _toggle_all_disks())
     disks_list.itemChanged.connect(lambda *_: update_disks_status())
 
-    count_btn.clicked.connect(apply_exact_count)
-    storage_btn.clicked.connect(apply_storage_limit)
+    category_tree.itemChanged.connect(on_tree_item_changed)
+    sel_all_cats_btn.clicked.connect(lambda: _set_tree_checked(True))
+    sel_none_cats_btn.clicked.connect(lambda: _set_tree_checked(False))
+    expand_cats_btn.clicked.connect(lambda: category_tree.expandAll())
+
+    apply_limit_btn.clicked.connect(apply_selection_limit)
     fit_disk_btn.clicked.connect(apply_fit_disk)
 
     search_input.textChanged.connect(filter_table)
-    category_combo.currentIndexChanged.connect(filter_table)
+    format_combo.currentIndexChanged.connect(filter_table)
 
     sel_all_btn.clicked.connect(lambda: _set_table_selection(True))
     sel_none_btn.clicked.connect(lambda: _set_table_selection(False))
     invert_sel_btn.clicked.connect(lambda: _invert_table_selection())
 
-    items_table.itemChanged.connect(lambda item: update_selection_summary() if not state["updating_table"] and item.column() == 0 else None)
+    items_table.itemChanged.connect(
+        lambda item: update_selection_summary() if not state["updating_table"] and item.column() == 0 else None
+    )
+    items_table.cellDoubleClicked.connect(
+        lambda r, c: _open_item_folder(r)
+    )
 
     change_app_btn.clicked.connect(lambda: _choose_app())
     auto_app_cb.toggled.connect(lambda *_: update_selection_summary())
+    models_only_cb.toggled.connect(lambda *_: load_library(state["source"]))
 
     toggle_log_btn.clicked.connect(lambda: log_view.setVisible(not log_view.isVisible()))
 
@@ -1787,7 +2265,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     stop_btn.clicked.connect(stop_copy)
 
     def _choose_src():
-        d = QFileDialog.getExistingDirectory(win, "Choose Library Root Directory", state["source"])
+        d = QFileDialog.getExistingDirectory(win, "Choose Library or Category Root Directory", state["source"])
         if d:
             load_library(d)
 
@@ -1799,7 +2277,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
                 u = shutil.disk_usage(p)
                 v = VolumeInfo(Path(p).name or p, p, u.free, u.total, True)
                 item = QListWidgetItem(f"📁 {v.label}  ({v.path})  —  {human_size(v.free)} free / {human_size(v.total)}")
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
                 item.setCheckState(Qt.Checked)
                 item.setData(Qt.UserRole, v)
                 disks_list.addItem(item)
@@ -1824,6 +2302,17 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             log_msg(f"Selected custom app: {state['app_path']}")
             update_selection_summary()
 
+    def _set_tree_checked(checked: bool):
+        state["updating_tree"] = True
+        for i in range(category_tree.topLevelItemCount()):
+            parent = category_tree.topLevelItem(i)
+            parent.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+            for j in range(parent.childCount()):
+                parent.child(j).setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+        state["updating_tree"] = False
+        apply_category_filter_to_table()
+        update_selection_summary()
+
     def _set_table_selection(checked: bool):
         state["updating_table"] = True
         for r in range(items_table.rowCount()):
@@ -1841,6 +2330,13 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         state["updating_table"] = False
         update_selection_summary()
 
+    def _open_item_folder(row: int):
+        cb_item = items_table.item(row, 0)
+        if cb_item:
+            it: CopyItem = cb_item.data(Qt.UserRole)
+            if it and it.asset.exists():
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(it.asset.resolve())))
+
     # Initial load
     refresh_disks()
     if initial_dest:
@@ -1848,7 +2344,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             u = shutil.disk_usage(initial_dest)
             v = VolumeInfo(Path(initial_dest).name, initial_dest, u.free, u.total, True)
             item = QListWidgetItem(f"💾 {v.label}  ({v.path})  —  {human_size(v.free)} free / {human_size(v.total)}")
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             item.setCheckState(Qt.Checked)
             item.setData(Qt.UserRole, v)
             disks_list.addItem(item)
@@ -1869,7 +2365,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="orga+ Copy Tool — ultra-fast models-only exporter to flash drives"
     )
-    parser.add_argument("--source", default=default_source(), help="source library folder")
+    parser.add_argument("--source", default=default_source(), help="source library or category folder")
     parser.add_argument(
         "--dest", action="append", default=[],
         help="destination drive or folder (repeat for multiple)",
@@ -1877,10 +2373,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="parallel copy streams")
     parser.add_argument("--limit-count", type=int, default=0, help="copy exact first N items")
     parser.add_argument("--limit-size-gb", type=float, default=0.0, help="storage limit in GB")
+    parser.add_argument("--balanced", action="store_true", help="distribute limit evenly across categories")
+    parser.add_argument("--categories", help="comma-separated category names to include")
+    parser.add_argument("--subcategories", help="comma-separated subcategory names to include")
     parser.add_argument("--no-auto-app", action="store_true", help="do not auto-copy the orga+ app")
     parser.add_argument("--app-path", default=None, help="custom path to orga+ app")
     parser.add_argument("--no-unzip", action="store_true", help="do not unzip model archives")
     parser.add_argument("--no-skip-existing", action="store_true", help="re-copy files already present")
+    parser.add_argument("--include-no-models", action="store_true", help="include assets without 3D models")
     parser.add_argument("--headless", action="store_true", help="run in terminal without GUI")
     args = parser.parse_args(argv)
 
@@ -1895,24 +2395,41 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not dests:
         parser.error("--dest is required in headless mode.")
 
-    items, skipped = scan_items(Path(args.source))
-    print(f"Found {len(items)} items with 3D models ({skipped} items without models skipped).")
+    models_only = not args.include_no_models
+    items, skipped = scan_items(Path(args.source), models_only=models_only)
+    print(f"Found {len(items)} items ({skipped} skipped without models).")
     if not items:
         return 0
 
+    # Filter categories / subcategories if requested
+    if args.categories:
+        allowed_cats = {c.strip() for c in args.categories.split(",")}
+        items = [it for it in items if it.job in allowed_cats]
+    if args.subcategories:
+        allowed_subs = {s.strip() for s in args.subcategories.split(",")}
+        items = [it for it in items if it.category in allowed_subs]
+
     if args.limit_count > 0:
-        items = items[:args.limit_count]
+        if args.balanced:
+            sel_ids = select_balanced_items(items, mode="count", limit_value=args.limit_count)
+            items = [it for it in items if it.unique_id in sel_ids]
+        else:
+            items = items[:args.limit_count]
         print(f"Applying count limit: selected {len(items)} items.")
     elif args.limit_size_gb > 0:
         limit_bytes = int(args.limit_size_gb * 1024 * 1024 * 1024)
-        filtered = []
-        tot = 0
-        for it in items:
-            if tot + it.total_bytes <= limit_bytes:
-                filtered.append(it)
-                tot += it.total_bytes
-        items = filtered
-        print(f"Applying storage limit: selected {len(items)} items ({human_size(tot)}).")
+        if args.balanced:
+            sel_ids = select_balanced_items(items, mode="storage", limit_value=limit_bytes)
+            items = [it for it in items if it.unique_id in sel_ids]
+        else:
+            filtered = []
+            tot = 0
+            for it in items:
+                if tot + it.total_bytes <= limit_bytes:
+                    filtered.append(it)
+                    tot += it.total_bytes
+            items = filtered
+        print(f"Applying storage limit: selected {len(items)} items ({human_size(sum(it.total_bytes for it in items))}).")
 
     app_path = find_orga_app(args.app_path)
     ctrl = CopyController()

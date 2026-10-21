@@ -23,6 +23,7 @@ from tools.orga_copy_tool import (
     run_copy,
     safe_extract_zip,
     scan_items,
+    select_balanced_mechanism,
     select_exact_count,
     select_fit_disk,
     select_storage_limit,
@@ -217,6 +218,164 @@ class TestOrgaCopyTool(unittest.TestCase):
         self.assertFalse(dst_plant.exists())
 
         self.assertGreater(len(progress_calls), 0)
+
+    def test_scan_items_direct_category_folder(self):
+        """Test selecting a category folder directly (e.g. Scenes/)."""
+        scenes_dir = self.tmp_dir / "Scenes"
+        ext_dir = scenes_dir / "Exteriors"
+        house_asset = ext_dir / "19492_House_Exterior"
+        (house_asset / "model").mkdir(parents=True)
+        (house_asset / "model" / "house.skp").write_bytes(b"SKP_DATA" * 50)
+        (house_asset / "image_1.jpg").write_bytes(b"IMAGE_DATA" * 20)
+
+        items, skipped = scan_items(scenes_dir, models_only=True)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].job, "Scenes")
+        self.assertEqual(items[0].category, "Exteriors")
+        self.assertEqual(items[0].asset.name, "19492_House_Exterior")
+        self.assertEqual(items[0].model_format, "SKP")
+
+    def test_scan_items_include_previews(self):
+        """Test scanning with models_only=False includes items without 3D models."""
+        items_all, skipped = scan_items(self.src_dir, models_only=False)
+        self.assertEqual(len(items_all), 4)
+        self.assertEqual(skipped, 0)
+        titles = [it.title for it in items_all]
+        self.assertIn("Indoor Plant", titles)
+
+    def test_select_balanced_mechanism_by_count(self):
+        """Test round-robin balanced selection across categories by item count."""
+        items = [
+            CopyItem(job="Scenes", category="Exteriors", asset=Path("a1"), title="Scene 1", total_bytes=100),
+            CopyItem(job="Scenes", category="Exteriors", asset=Path("a2"), title="Scene 2", total_bytes=100),
+            CopyItem(job="Furniture", category="Chairs", asset=Path("b1"), title="Chair 1", total_bytes=100),
+            CopyItem(job="Furniture", category="Chairs", asset=Path("b2"), title="Chair 2", total_bytes=100),
+            CopyItem(job="Lighting", category="Lamps", asset=Path("c1"), title="Lamp 1", total_bytes=100),
+        ]
+        # Target 3 items across 3 categories: should pick exactly 1 from each
+        selected = select_balanced_mechanism(items, mode="count", limit_value=3, strategy="round_robin")
+        self.assertEqual(len(selected), 3)
+        sel_jobs = {uid.split("/")[0] for uid in selected}
+        self.assertEqual(sel_jobs, {"Scenes", "Furniture", "Lighting"})
+
+    def test_select_balanced_mechanism_by_size(self):
+        """Test round-robin balanced selection across categories up to target size."""
+        items = [
+            CopyItem(job="Scenes", category="Exteriors", asset=Path("a1"), title="Scene 1", total_bytes=1000),
+            CopyItem(job="Scenes", category="Exteriors", asset=Path("a2"), title="Scene 2", total_bytes=1000),
+            CopyItem(job="Furniture", category="Chairs", asset=Path("b1"), title="Chair 1", total_bytes=1000),
+            CopyItem(job="Furniture", category="Chairs", asset=Path("b2"), title="Chair 2", total_bytes=1000),
+        ]
+        # Target 2500 bytes: picks 1 from Furniture (1000), 1 from Scenes (1000) = 2000 bytes. Next would exceed 2500.
+        selected = select_balanced_mechanism(items, mode="size", limit_value=2500, strategy="round_robin")
+        self.assertEqual(len(selected), 2)
+        sel_jobs = {uid.split("/")[0] for uid in selected}
+        self.assertEqual(sel_jobs, {"Scenes", "Furniture"})
+
+    def test_select_balanced_mechanism_with_filtering(self):
+        """Test balanced selection filtered to included categories."""
+        items = [
+            CopyItem(job="Scenes", category="Exteriors", asset=Path("a1"), title="Scene 1", total_bytes=100),
+            CopyItem(job="Furniture", category="Chairs", asset=Path("b1"), title="Chair 1", total_bytes=100),
+            CopyItem(job="Lighting", category="Lamps", asset=Path("c1"), title="Lamp 1", total_bytes=100),
+        ]
+        selected = select_balanced_mechanism(
+            items,
+            mode="count",
+            limit_value=2,
+            included_categories={"Scenes", "Lighting"},
+            strategy="round_robin",
+        )
+        self.assertEqual(len(selected), 2)
+        sel_jobs = {uid.split("/")[0] for uid in selected}
+        self.assertEqual(sel_jobs, {"Scenes", "Lighting"})
+        self.assertNotIn("Furniture", sel_jobs)
+
+    def test_user_folder_structure_with_rar_and_subcategories(self):
+        """
+        Test the user's exact folder structure:
+          Scenes/
+            Exteriors/
+              Villa_19492/
+                image_1.jpg
+                image_2.jpg
+                model/
+                  exterior_model.rar
+            Interiors/
+              LivingRoom_20114/
+                preview.png
+                model/
+                  living_room.zip
+        When root is selected as 'Scenes/', it must discover both subcategories
+        and allow copying only selected subcategories.
+        """
+        scenes_root = self.tmp_dir / "Scenes"
+        ext_asset = scenes_root / "Exteriors" / "Villa_19492"
+        (ext_asset / "model").mkdir(parents=True)
+        (ext_asset / "image_1.jpg").write_bytes(b"EXT_IMG_1" * 10)
+        (ext_asset / "image_2.jpg").write_bytes(b"EXT_IMG_2" * 10)
+        (ext_asset / "model" / "exterior_model.rar").write_bytes(b"RAR_ARCHIVE_DATA" * 50)
+
+        int_asset = scenes_root / "Interiors" / "LivingRoom_20114"
+        (int_asset / "model").mkdir(parents=True)
+        (int_asset / "preview.png").write_bytes(b"INT_IMG" * 10)
+        zip_p = int_asset / "model" / "living_room.zip"
+        with zipfile.ZipFile(zip_p, "w") as zf:
+            zf.writestr("room.skp", b"ROOM_SKP_CONTENT" * 50)
+
+        # 1. Scan with root = Scenes/
+        items, skipped = scan_items(scenes_root, models_only=True)
+        self.assertEqual(len(items), 2)
+        self.assertEqual(skipped, 0)
+
+        by_subcat = {it.category: it for it in items}
+        self.assertIn("Exteriors", by_subcat)
+        self.assertIn("Interiors", by_subcat)
+
+        ext_item = by_subcat["Exteriors"]
+        self.assertEqual(ext_item.job, "Scenes")
+        self.assertEqual(ext_item.category, "Exteriors")
+        self.assertEqual(ext_item.model_format, "RAR")
+        self.assertEqual(ext_item.asset.name, "Villa_19492")
+
+        int_item = by_subcat["Interiors"]
+        self.assertEqual(int_item.job, "Scenes")
+        self.assertEqual(int_item.category, "Interiors")
+        self.assertEqual(int_item.model_format, "ZIP")
+
+        # 2. Select ONLY Exteriors subcategory
+        selected_subcats = {("Scenes", "Exteriors")}
+        selected_ids = select_balanced_mechanism(
+            items,
+            mode="count",
+            limit_value=10,
+            included_subcategories=selected_subcats,
+        )
+        self.assertEqual(len(selected_ids), 1)
+        self.assertIn(ext_item.unique_id, selected_ids)
+        self.assertNotIn(int_item.unique_id, selected_ids)
+
+        # 3. Copy only selected subcategory items
+        items_to_copy = [it for it in items if it.unique_id in selected_ids]
+        ctrl = CopyController()
+        summary = run_copy(
+            items=items_to_copy,
+            dest_root=self.dest_disk,
+            ctrl=ctrl,
+            auto_copy_app=False,
+            unzip_models=True,
+        )
+        self.assertEqual(summary["items_done"], 1)
+
+        # Verify destination structure
+        dest_ext = self.dest_disk / "Scenes" / "Exteriors" / "Villa_19492"
+        self.assertTrue((dest_ext / "image_1.jpg").exists())
+        self.assertTrue((dest_ext / "image_2.jpg").exists())
+        self.assertTrue((dest_ext / "model" / "exterior_model.rar").exists())
+
+        # Verify unselected subcategory was not copied
+        dest_int = self.dest_disk / "Scenes" / "Interiors" / "LivingRoom_20114"
+        self.assertFalse(dest_int.exists())
 
 
 if __name__ == "__main__":
