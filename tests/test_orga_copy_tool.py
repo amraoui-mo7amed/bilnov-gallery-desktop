@@ -519,6 +519,114 @@ class TestOrgaCopyTool(unittest.TestCase):
         dest_s = self.dest_disk / "Scenes" / "Commercial" / "Offices" / "Meeting_Rooms" / "Executive Suite"
         self.assertFalse(dest_s.exists())
 
+    def test_archive_deleted_from_destination_after_extraction(self):
+        """Archive is copied to the destination, extracted to model/, then deleted.
+        Stale archives left by earlier runs are also purged; progress still reaches 100%."""
+        lib = self.tmp_dir / "Purge_Library"
+        asset = lib / "Furniture" / "Chairs" / "Chair_01"
+        (asset / "model").mkdir(parents=True)
+        (asset / "preview.jpg").write_bytes(b"IMG" * 30)
+        with zipfile.ZipFile(asset / "model" / "chair.rar", "w") as zf:
+            zf.writestr("Chair_Wrapper/chair.skp", b"SKP" * 100)
+
+        items, _ = scan_items(lib, models_only=True)
+        self.assertEqual(len(items), 1)
+
+        snaps = []
+        summary = run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=CopyController(),
+            auto_copy_app=False,
+            unzip_models=True,
+            progress_cb=lambda snap, i, f: snaps.append(snap),
+        )
+        self.assertEqual(summary["copied_bytes"], summary["total_bytes"])
+
+        dest_asset = self.dest_disk / "Furniture" / "Chairs" / "Chair_01"
+        self.assertTrue((dest_asset / "model" / "chair.skp").exists())
+        leftovers = [p for p in dest_asset.rglob("*") if p.suffix.lower() in {".zip", ".rar", ".7z"}]
+        self.assertEqual(leftovers, [])
+
+        # Simulate a stale archive left on disk by an older version, then re-run
+        (dest_asset / "model" / "chair.rar").write_bytes(b"STALE")
+        run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=CopyController(),
+            auto_copy_app=False,
+            unzip_models=True,
+        )
+        self.assertFalse((dest_asset / "model" / "chair.rar").exists())
+        self.assertTrue((dest_asset / "model" / "chair.skp").exists())
+
+    def test_existing_replace_and_skip_modes(self):
+        """Test replace and skip modes for already-existing destination files."""
+        from tools.orga_copy_tool import (
+            EXISTING_REPLACE,
+            EXISTING_SKIP,
+            EXISTING_RESUME,
+            find_existing_items,
+            item_exists_on_disk,
+        )
+
+        lib = self.tmp_dir / "Replace_Library"
+        asset = lib / "Decor" / "Vases" / "Vase_01"
+        (asset / "model").mkdir(parents=True)
+        (asset / "thumb.jpg").write_bytes(b"ORIGINAL_IMAGE" * 10)
+        (asset / "model" / "vase.skp").write_bytes(b"ORIGINAL_MODEL" * 10)
+
+        items, _ = scan_items(lib, models_only=True)
+        self.assertEqual(len(items), 1)
+        item = items[0]
+
+        # 1. Initially destination has no item
+        self.assertFalse(item_exists_on_disk(self.dest_disk, item))
+        self.assertEqual(find_existing_items(items, [self.dest_disk]), [])
+
+        # 2. Run initial copy
+        summary1 = run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=CopyController(),
+            auto_copy_app=False,
+        )
+        self.assertEqual(summary1["items_done"], 1)
+        dest_asset = self.dest_disk / "Decor" / "Vases" / "Vase_01"
+        self.assertTrue((dest_asset / "thumb.jpg").exists())
+        self.assertTrue((dest_asset / "model" / "vase.skp").exists())
+
+        # Now item is detected as existing on disk
+        self.assertTrue(item_exists_on_disk(self.dest_disk, item))
+        existing_matches = find_existing_items(items, [self.dest_disk])
+        self.assertEqual(len(existing_matches), 1)
+
+        # 3. Test EXISTING_SKIP: item should be skipped, no files overwritten
+        (dest_asset / "extra_file.txt").write_text("should_stay")
+        summary_skip = run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=CopyController(),
+            auto_copy_app=False,
+            existing_mode=EXISTING_SKIP,
+        )
+        self.assertEqual(summary_skip["items_skipped"], 1)
+        self.assertTrue((dest_asset / "extra_file.txt").exists())
+
+        # 4. Test EXISTING_REPLACE: item folder is deleted and freshly copied
+        summary_replace = run_copy(
+            items=items,
+            dest_root=self.dest_disk,
+            ctrl=CopyController(),
+            auto_copy_app=False,
+            existing_mode=EXISTING_REPLACE,
+        )
+        self.assertEqual(summary_replace["items_replaced"], 1)
+        self.assertTrue((dest_asset / "thumb.jpg").exists())
+        self.assertTrue((dest_asset / "model" / "vase.skp").exists())
+        # The extra file in the old destination folder should have been deleted!
+        self.assertFalse((dest_asset / "extra_file.txt").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

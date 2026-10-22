@@ -738,6 +738,44 @@ def _fast_copy(
     return "buffered"
 
 
+def _has_extracted_model(model_dir: Path) -> bool:
+    """True if model_dir already contains an extracted model file (e.g. .skp) at its root."""
+    if not model_dir.is_dir():
+        return False
+    return any(
+        f.is_file() and (f.suffix.lower() == ".skp" or f.suffix.lower() in MODEL_EXTS)
+        for f in model_dir.iterdir()
+    )
+
+
+def _has_extracted_content(model_dir: Path) -> bool:
+    """True if model_dir contains at least one real (non-archive, non-hidden) file."""
+    if not model_dir.is_dir():
+        return False
+    for f in model_dir.rglob("*"):
+        if f.is_file() and not f.name.startswith(".") and f.suffix.lower() not in ARCHIVE_EXTS:
+            return True
+    return False
+
+
+def purge_archives(root: Path, log_cb: Optional[Callable[[str], None]] = None) -> int:
+    """Recursively delete every archive file (.zip/.rar/.7z/.tar/.gz) under root.
+    Returns the number of files removed."""
+    log = log_cb or (lambda m: None)
+    root = Path(root)
+    if not root.is_dir():
+        return 0
+    removed = 0
+    for f in list(root.rglob("*")):
+        if f.is_file() and f.suffix.lower() in ARCHIVE_EXTS:
+            try:
+                f.unlink()
+                removed += 1
+            except OSError as e:
+                log(f"Could not delete archive {f.name}: {e}")
+    return removed
+
+
 def normalize_model_directory(target_model_dir: Path, archive_name: str = "") -> None:
     """
     Normalizes the extracted model directory:
@@ -1080,6 +1118,38 @@ class Progress:
 # Multi-Disk Copy Runner
 # --------------------------------------------------------------------------
 
+EXISTING_RESUME = "resume"    # keep existing files, copy only missing/changed ones (default)
+EXISTING_REPLACE = "replace"  # delete the existing item folder on the disk and copy it fresh
+EXISTING_SKIP = "skip"        # leave already-present items untouched and don't copy them
+
+
+def dest_asset_path(dest_root: Path, it: CopyItem) -> Path:
+    """Destination folder of an item on a target disk (mirrors run_copy's layout)."""
+    p = Path(dest_root) / it.job
+    for sp in (s.strip() for s in it.category.split("/")):
+        if sp:
+            p = p / sp
+    return p / (it.title if it.custom_files is not None else it.asset.name)
+
+
+def item_exists_on_disk(dest_root: Path, it: CopyItem) -> bool:
+    """True if the item's folder already exists on the disk with at least one real file."""
+    d = dest_asset_path(dest_root, it)
+    if not d.is_dir():
+        return False
+    return any(f.is_file() and not f.name.startswith(".") for f in d.rglob("*"))
+
+
+def find_existing_items(items: List[CopyItem], dest_roots: List[Path]) -> List[Tuple[CopyItem, List[Path]]]:
+    """Return [(item, [disks where it already exists])] for every item present on any disk."""
+    out: List[Tuple[CopyItem, List[Path]]] = []
+    for it in items:
+        hits = [Path(r) for r in dest_roots if item_exists_on_disk(Path(r), it)]
+        if hits:
+            out.append((it, hits))
+    return out
+
+
 def run_copy(
     items: List[CopyItem],
     dest_root: Path,
@@ -1090,10 +1160,17 @@ def run_copy(
     auto_copy_app: bool = True,
     app_path: Optional[Path] = None,
     unzip_models: bool = True,
+    existing_mode: str = EXISTING_RESUME,
     progress_cb: Optional[Callable[[Tuple[int, int, float], str, str], None]] = None,
     log_cb: Optional[Callable[[str], None]] = None,
 ) -> dict:
-    """Execute copying of selected items and optional app to a single destination root."""
+    """Execute copying of selected items and optional app to a single destination root.
+
+    existing_mode controls items already present on the disk:
+      "resume"  - keep existing files, copy only what's missing (honours skip_existing)
+      "replace" - delete the existing item folder and copy it again from scratch
+      "skip"    - don't touch or copy items that already exist on the disk
+    """
     dest_root = Path(dest_root).resolve()
     dest_root.mkdir(parents=True, exist_ok=True)
     log = log_cb or (lambda m: None)
@@ -1121,9 +1198,19 @@ def run_copy(
         emit(progress.current_item, progress.current_file)
 
     free = shutil.disk_usage(dest_root).free
-    if grand_total > free:
+    needed = grand_total
+    if existing_mode in (EXISTING_SKIP, EXISTING_REPLACE):
+        for it in items:
+            if not item_exists_on_disk(dest_root, it):
+                continue
+            if existing_mode == EXISTING_SKIP:
+                needed -= it.total_bytes
+            else:  # replace: the old copy gets deleted first, so its space is reclaimed
+                d = dest_asset_path(dest_root, it)
+                free += sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+    if needed > free:
         raise IOError(
-            f"Not enough space on {dest_root.name}: need {human_size(grand_total)}, "
+            f"Not enough space on {dest_root.name}: need {human_size(needed)}, "
             f"free {human_size(free)}"
         )
 
@@ -1148,17 +1235,29 @@ def run_copy(
             log(f"App copy warning: {e}")
 
     # 2. Copy Items (Assets)
+    items_skipped = 0
+    items_replaced = 0
     for it in items:
         ctrl.checkpoint()
         item_label = f"{it.job} / {it.category} / {it.title}"
         progress.current_item = item_label
 
-        subcat_parts = [p.strip() for p in it.category.split("/") if p.strip()]
-        dest_asset = dest_root / it.job
-        for sp in subcat_parts:
-            dest_asset = dest_asset / sp
-        asset_folder_name = it.title if it.custom_files is not None else it.asset.name
-        dest_asset = dest_asset / asset_folder_name
+        dest_asset = dest_asset_path(dest_root, it)
+
+        if existing_mode in (EXISTING_SKIP, EXISTING_REPLACE) and item_exists_on_disk(dest_root, it):
+            if existing_mode == EXISTING_SKIP:
+                log(f"Skipped (already on disk): {it.title}")
+                items_skipped += 1
+                progress.items_done += 1
+                on_chunk(it.total_bytes)
+                emit(item_label, "Skipped (already exists)", force=True)
+                continue
+            log(f"Replacing existing item on disk: {it.title}")
+            progress.current_file = "Removing existing files…"
+            emit(item_label, progress.current_file, force=True)
+            shutil.rmtree(dest_asset, ignore_errors=True)
+            items_replaced += 1
+
         dest_model_dir = dest_asset / "model"
         dest_asset.mkdir(parents=True, exist_ok=True)
         dest_model_dir.mkdir(parents=True, exist_ok=True)
@@ -1196,35 +1295,45 @@ def run_copy(
 
             if is_archive and unzip_models:
                 # Check if model has already been extracted on target disk
-                has_extracted_model = any(
-                    f.is_file() and (f.suffix.lower() == ".skp" or f.suffix.lower() in MODEL_EXTS)
-                    for f in dest_model_dir.iterdir()
-                ) if dest_model_dir.is_dir() else False
+                has_extracted_model = _has_extracted_model(dest_model_dir)
 
                 if skip_existing and has_extracted_model:
+                    # Model already extracted: make sure no stale archive is left behind
+                    purge_archives(dest_asset, log_cb=log)
                     on_chunk(mf.stat().st_size)
                     continue
 
+                # 1. Copy the archive onto the destination disk
+                dst_archive = dest_model_dir / mf.name
+                size = mf.stat().st_size
+                progress.current_file = f"Copying {mf.name}"
+                emit(item_label, progress.current_file, force=True)
+                if not (dst_archive.exists() and dst_archive.stat().st_size == size):
+                    _fast_copy(mf, dst_archive, ctrl, on_chunk)
+                else:
+                    on_chunk(size)
+
+                # 2. Extract it in place on the destination disk
                 progress.current_file = f"Extracting {mf.name} -> /model/"
                 emit(item_label, progress.current_file, force=True)
                 log(f"Extracting model archive for {it.title} ({mf.name}) -> model/")
                 try:
                     safe_extract_archive(
-                        mf,
+                        dst_archive,
                         dest_model_dir,
                         ctrl,
-                        on_chunk=on_chunk,
+                        on_chunk=lambda n: None,  # bytes already counted by the copy
                         log_cb=log,
                     )
                 except Exception as e:
-                    log(f"Extraction failed for {mf.name} ({e}), falling back to direct copy")
-                    dst_m = dest_model_dir / mf.name
-                    size = mf.stat().st_size
-                    if skip_existing and dst_m.exists() and dst_m.stat().st_size == size:
-                        on_chunk(size)
-                        continue
-                    emit(item_label, mf.name, force=True)
-                    _fast_copy(mf, dst_m, ctrl, on_chunk)
+                    log(f"Extraction failed for {mf.name} ({e}); archive kept in model/")
+                    continue
+
+                # 3. Delete the archive from the destination disk once extracted
+                if _has_extracted_content(dest_model_dir):
+                    removed = purge_archives(dest_asset, log_cb=log)
+                    if removed:
+                        log(f"Deleted {removed} archive file(s) from destination for {it.title}")
             else:
                 dst_m = dest_model_dir / mf.name
                 size = mf.stat().st_size
@@ -1246,6 +1355,8 @@ def run_copy(
     return {
         "dest": str(dest_root),
         "items_done": progress.items_done,
+        "items_skipped": items_skipped,
+        "items_replaced": items_replaced,
         "copied_bytes": copied,
         "total_bytes": tot,
         "stopped": False,
@@ -1262,6 +1373,7 @@ def run_copy_multi(
     auto_copy_app: bool = True,
     app_path: Optional[Path] = None,
     unzip_models: bool = True,
+    existing_mode: str = EXISTING_RESUME,
     progress_cb: Optional[Callable[[Tuple[int, int, float], str, str], None]] = None,
     log_cb: Optional[Callable[[str], None]] = None,
 ) -> dict:
@@ -1299,6 +1411,7 @@ def run_copy_multi(
                 auto_copy_app=auto_copy_app,
                 app_path=app_path,
                 unzip_models=unzip_models,
+                existing_mode=existing_mode,
                 progress_cb=pcb,
                 log_cb=log,
             )
@@ -1311,7 +1424,7 @@ def run_copy_multi(
             log(f"[Disk {i}/{n}] FAILED: {e}")
             results.append({"dest": str(dest), "error": str(e), "stopped": False})
 
-        if r.get("stopped"):
+        if results and results[-1].get("stopped"):
             break
 
     return {"destinations": results, "stopped": ctrl.stopped}
@@ -1701,8 +1814,10 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             app_path: Optional[Path],
             unzip_models: bool,
             signals: Signals,
+            existing_mode: str = EXISTING_RESUME,
         ) -> None:
             super().__init__()
+            self.existing_mode = existing_mode
             self.items = items
             self.dests = dests
             self.ctrl = ctrl
@@ -1724,6 +1839,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
                     auto_copy_app=self.auto_copy_app,
                     app_path=self.app_path,
                     unzip_models=self.unzip_models,
+                    existing_mode=self.existing_mode,
                     progress_cb=lambda snap, item, fname: self.signals.progress.emit(
                         snap[0], snap[1], snap[2], item, fname
                     ),
@@ -1744,6 +1860,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         "auto_copy_app": True,
         "unzip_models": True,
         "skip_existing": True,
+        "existing_mode": "ask",
         "models_only": True,
         "workers": workers,
         "safety_margin_mb": 500,
@@ -1968,6 +2085,23 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             self.resume_cb.setChecked(state.get("skip_existing", True))
             perf_box_layout.addWidget(self.resume_cb)
 
+            existing_row = QHBoxLayout()
+            existing_lbl = QLabel("When an item already exists on the disk:")
+            self.existing_combo = QComboBox()
+            self._existing_modes = [
+                ("ask", "Ask me every time"),
+                (EXISTING_REPLACE, "Replace it (delete && copy again)"),
+                (EXISTING_SKIP, "Skip it (keep the existing copy)"),
+                (EXISTING_RESUME, "Merge (only copy missing files)"),
+            ]
+            for _key, _label in self._existing_modes:
+                self.existing_combo.addItem(_label.replace("&&", "&"), _key)
+            _idx = self.existing_combo.findData(state.get("existing_mode", "ask"))
+            self.existing_combo.setCurrentIndex(max(0, _idx))
+            existing_row.addWidget(existing_lbl)
+            existing_row.addWidget(self.existing_combo, 1)
+            perf_box_layout.addLayout(existing_row)
+
             workers_row = QHBoxLayout()
             workers_lbl = QLabel("Parallel copy streams:")
             self.workers_spin = QSpinBox()
@@ -2156,6 +2290,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             self.auto_app_cb.setChecked(True)
             self.unzip_cb.setChecked(True)
             self.resume_cb.setChecked(True)
+            self.existing_combo.setCurrentIndex(0)
             self.workers_spin.setValue(1)
             self.safety_spin.setValue(500)
             self.models_only_cb.setChecked(True)
@@ -2169,6 +2304,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             state["auto_copy_app"] = self.auto_app_cb.isChecked()
             state["unzip_models"] = self.unzip_cb.isChecked()
             state["skip_existing"] = self.resume_cb.isChecked()
+            state["existing_mode"] = self.existing_combo.currentData() or "ask"
             state["workers"] = self.workers_spin.value()
             state["safety_margin_mb"] = self.safety_spin.value()
             state["models_only"] = self.models_only_cb.isChecked()
@@ -2225,7 +2361,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
     title_row.setSpacing(8)
     title_lbl = QLabel("orga+ Copy Tool")
     title_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #F8FAFC;")
-    badge_lbl = QLabel("v2.3.0")
+    badge_lbl = QLabel("v2.3.1")
     badge_lbl.setStyleSheet("background-color: #312E81; color: #818CF8; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700;")
     title_row.addWidget(title_lbl)
     title_row.addWidget(badge_lbl)
@@ -2995,6 +3131,54 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
         ctrl.resume()
         dest_paths = [Path(d.path) for d in chosen_disks]
 
+        # Decide what to do with items that already exist on the target disk(s)
+        existing_mode = state.get("existing_mode", "ask")
+        if existing_mode in ("ask", EXISTING_REPLACE, EXISTING_SKIP):
+            existing = find_existing_items(selected_items, dest_paths)
+        else:
+            existing = []
+
+        if existing and existing_mode == "ask":
+            n_exist = len(existing)
+            box = QMessageBox(win)
+            box.setIcon(QMessageBox.Question)
+            box.setWindowTitle("Items Already Exist")
+            box.setText(
+                f"{n_exist} of {len(selected_items)} selected item(s) already exist on the target disk(s)."
+            )
+            box.setInformativeText(
+                "Replace: delete them on the disk and copy them again.\n"
+                "Skip: keep the existing copies and only copy the new items.\n"
+                "Cancel: don't start the copy."
+            )
+            lines = []
+            for it, disks in existing[:200]:
+                disk_names = ", ".join(p.name or str(p) for p in disks)
+                lines.append(f"• {it.job} / {it.category} / {it.title}   [{disk_names}]")
+            if n_exist > 200:
+                lines.append(f"… and {n_exist - 200} more")
+            box.setDetailedText("\n".join(lines))
+            replace_btn = box.addButton("Replace All", QMessageBox.DestructiveRole)
+            skip_btn = box.addButton("Skip Existing", QMessageBox.AcceptRole)
+            cancel_btn = box.addButton("Cancel", QMessageBox.RejectRole)
+            box.setDefaultButton(skip_btn)
+            box.setEscapeButton(cancel_btn)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked == replace_btn:
+                existing_mode = EXISTING_REPLACE
+            elif clicked == skip_btn:
+                existing_mode = EXISTING_SKIP
+            else:
+                log_msg("Copy cancelled: items already exist on the target disk(s).")
+                return
+        elif existing_mode == "ask":
+            existing_mode = EXISTING_RESUME
+
+        if existing:
+            verb = {EXISTING_REPLACE: "replaced", EXISTING_SKIP: "skipped"}.get(existing_mode, "merged")
+            log_msg(f"{len(existing)} existing item(s) will be {verb}.")
+
         worker = CopyWorker(
             items=selected_items,
             dests=dest_paths,
@@ -3005,6 +3189,7 @@ def run_gui(source: str, initial_dest: str = "", workers: int = DEFAULT_WORKERS)
             app_path=state["app_path"] if state.get("auto_copy_app", True) else None,
             unzip_models=state.get("unzip_models", True),
             signals=signals,
+            existing_mode=existing_mode,
         )
         state["worker"] = worker
         set_running_state(True)
@@ -3154,6 +3339,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--app-path", default=None, help="custom path to orga+ app")
     parser.add_argument("--no-unzip", action="store_true", help="do not unzip model archives")
     parser.add_argument("--no-skip-existing", action="store_true", help="re-copy files already present")
+    parser.add_argument(
+        "--existing",
+        choices=[EXISTING_RESUME, EXISTING_REPLACE, EXISTING_SKIP, "ask"],
+        default="ask",
+        help="action when item exists on destination: resume, replace, skip, or ask",
+    )
     parser.add_argument("--include-no-models", action="store_true", help="include assets without 3D models")
     parser.add_argument("--headless", action="store_true", help="run in terminal without GUI")
     args = parser.parse_args(argv)
@@ -3218,6 +3409,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             flush=True,
         )
 
+    existing_mode = args.existing
+    if existing_mode == "ask":
+        existing_mode = EXISTING_RESUME
+
     summary = run_copy_multi(
         items=items,
         dests=[Path(d) for d in dests],
@@ -3227,6 +3422,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         auto_copy_app=not args.no_auto_app,
         app_path=app_path,
         unzip_models=not args.no_unzip,
+        existing_mode=existing_mode,
         progress_cb=on_progress,
         log_cb=lambda m: print(f"\n{m}"),
     )
