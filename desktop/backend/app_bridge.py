@@ -247,7 +247,7 @@ class AppBridge(QObject):
 
     @Property(str, constant=True)
     def appVersion(self) -> str:
-        return "v2.1.0"
+        return "v2.2.0"
 
     # =============================================================
     # Internationalization / Language Preference (en / fr only)
@@ -510,16 +510,22 @@ class AppBridge(QObject):
                 raw_imgs = item.get("images", [])
                 imgs_file_urls = []
                 for rel_img in raw_imgs:
-                    p = (DATA_DIR / rel_img).resolve()
+                    p = Path(rel_img)
+                    if not p.is_absolute():
+                        p = (DATA_DIR / rel_img).resolve()
                     if p.exists():
                         imgs_file_urls.append(QUrl.fromLocalFile(str(p)).toString())
 
                 item["images_full"] = imgs_file_urls
                 item["first_image"] = imgs_file_urls[0] if imgs_file_urls else ""
-                item["folder_full_path"] = str((DATA_DIR / item["folder_path"]).resolve())
+                if not item.get("folder_full_path") or not Path(item["folder_full_path"]).exists():
+                    item["folder_full_path"] = str((DATA_DIR / item["folder_path"]).resolve())
 
                 if item.get("model_path"):
-                    item["model_file_full"] = str((DATA_DIR / item["model_path"]).resolve())
+                    mp = Path(item["model_path"])
+                    if not mp.is_absolute():
+                        mp = (DATA_DIR / item["model_path"]).resolve()
+                    item["model_file_full"] = str(mp) if mp.exists() else ""
                 else:
                     item["model_file_full"] = ""
 
@@ -566,35 +572,124 @@ class AppBridge(QObject):
     @Slot(str)
     def openArticleLocation(self, folder_path: str):
         """
-        Opens the exact article folder inside ./data in macOS Finder or system file manager.
+        Opens the exact article folder or its external source directory in system file manager.
         """
+        target = None
         if not folder_path:
             target = DATA_DIR.resolve()
         else:
-            target = (DATA_DIR / folder_path).resolve()
+            p = Path(folder_path)
+            # Check if an existing absolute path was given
+            if p.is_absolute() and p.exists():
+                target = p.resolve()
+            else:
+                local_dir = (DATA_DIR / folder_path).resolve()
+                if local_dir.exists():
+                    target = local_dir
+                    # Check if meta.json points to external absolute location
+                    meta_file = local_dir / "meta.json"
+                    if meta_file.exists():
+                        try:
+                            with open(meta_file, encoding="utf-8") as mf:
+                                meta = json.load(mf)
+                            s_dir = meta.get("source_dir")
+                            if s_dir and Path(s_dir).exists():
+                                target = Path(s_dir).resolve()
+                            elif meta.get("models"):
+                                m0 = Path(meta["models"][0])
+                                if m0.exists():
+                                    target = m0.parent.resolve()
+                            elif meta.get("images"):
+                                i0 = Path(meta["images"][0])
+                                if i0.exists():
+                                    target = i0.parent.resolve()
+                        except Exception:
+                            pass
+                else:
+                    target = local_dir
 
-        # Security check: verify path is strictly within DATA_DIR
-        try:
-            target.relative_to(DATA_DIR.resolve())
-        except ValueError:
-            self.toast.emit("error", "Access denied: Path is outside ./data")
-            return
-
-        if not target.exists():
+        if not target or not target.exists():
             self.toast.emit("warning", f"Folder does not exist: {folder_path}")
             return
 
         if sys.platform == "darwin":
-            subprocess.run(["open", str(target)], check=False)
+            if target.is_file():
+                subprocess.run(["open", "-R", str(target)], check=False)
+            else:
+                subprocess.run(["open", str(target)], check=False)
         elif sys.platform == "win32":
-            os.startfile(str(target))
+            if target.is_file():
+                subprocess.run(["explorer", f"/select,{str(target)}"], check=False)
+            else:
+                os.startfile(str(target))
         else:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+            open_target = target.parent if target.is_file() else target
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(open_target)))
 
     @Slot(str)
     def openFolder(self, folder_path: str):
         """Alias for openArticleLocation."""
         self.openArticleLocation(folder_path)
+
+    @Slot(result=bool)
+    @Slot(str, result=bool)
+    def createShortcut(self, target: str = "both") -> bool:
+        """
+        Creates Desktop and/or Taskbar shortcut for orga+ on Windows.
+        target can be 'desktop', 'taskbar', or 'both'.
+        """
+        if sys.platform != "win32":
+            logger.info("createShortcut is only supported on Windows")
+            return False
+
+        target_mode = (target or "both").strip().lower()
+        exe_path = Path(sys.executable).resolve()
+        app_name = "orga+"
+
+        try:
+            ps_script = f"""
+            $wsh = New-Object -ComObject WScript.Shell
+            $exe = "{str(exe_path)}"
+            $workDir = "{str(exe_path.parent)}"
+
+            if ('{target_mode}' -eq 'desktop' -or '{target_mode}' -eq 'both') {{
+                $deskPath = [System.Environment]::GetFolderPath('Desktop')
+                $sc = $wsh.CreateShortcut([System.IO.Path]::Combine($deskPath, '{app_name}.lnk'))
+                $sc.TargetPath = $exe
+                $sc.WorkingDirectory = $workDir
+                $sc.IconLocation = "$exe,0"
+                $sc.Save()
+            }}
+
+            if ('{target_mode}' -eq 'taskbar' -or '{target_mode}' -eq 'both') {{
+                $tbDir = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar')
+                if (-not (Test-Path $tbDir)) {{
+                    New-Item -ItemType Directory -Path $tbDir -Force | Out-Null
+                }}
+                $scTb = $wsh.CreateShortcut([System.IO.Path]::Combine($tbDir, '{app_name}.lnk'))
+                $scTb.TargetPath = $exe
+                $scTb.WorkingDirectory = $workDir
+                $scTb.IconLocation = "$exe,0"
+                $scTb.Save()
+            }}
+            """
+            res = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                self.toast.emit("success", f"Shortcut ({target_mode}) created successfully!")
+                return True
+            else:
+                logger.error("Failed to create shortcut: %s", res.stderr)
+                self.toast.emit("error", "Could not create shortcut")
+                return False
+        except Exception as e:
+            logger.error("Exception creating shortcut: %s", e)
+            self.toast.emit("error", f"Error creating shortcut: {e}")
+            return False
 
     # =============================================================
     # Add Item to Library (images + article name + SketchUp files)
@@ -837,27 +932,42 @@ class AppBridge(QObject):
                     continue
 
                 if item_path.is_dir():
-                    # Direct folder import
+                    # Direct folder import (use absolute location, do not copy)
                     target_folder_name = item_path.name
                     target_folder = imported_dir / target_folder_name
                     counter = 1
                     while target_folder.exists():
                         target_folder = imported_dir / f"{target_folder_name}_{counter}"
                         counter += 1
-                    shutil.copytree(item_path, target_folder)
+                    target_folder.mkdir(parents=True, exist_ok=True)
+
+                    abs_imgs = [str(f.resolve()) for f in item_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+                    abs_models = [str(f.resolve()) for f in item_path.iterdir() if f.is_file() and f.suffix.lower() not in IMAGE_EXTS]
+                    model_sub = item_path / "model"
+                    if model_sub.is_dir():
+                        abs_models.extend([str(f.resolve()) for f in model_sub.iterdir() if f.is_file()])
+                    imgs_sub = item_path / "images"
+                    if imgs_sub.is_dir():
+                        abs_imgs.extend([str(f.resolve()) for f in imgs_sub.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS])
+
                     meta_path = target_folder / "meta.json"
-                    if not meta_path.exists():
-                        meta = {
-                            "title": target_folder_name.replace("_", " ").replace("-", " ").title(),
-                            "category": "Imported",
-                            "imported_at": datetime.now().isoformat(),
-                        }
-                        with open(meta_path, "w", encoding="utf-8") as mf:
-                            json.dump(meta, mf, indent=2, ensure_ascii=False)
+                    meta = {
+                        "title": target_folder_name.replace("_", " ").replace("-", " ").title(),
+                        "category": "Imported",
+                        "subcategory": "General",
+                        "source_dir": str(item_path.resolve()),
+                        "images": abs_imgs,
+                        "models": abs_models,
+                        "thumbnail": abs_imgs[0] if abs_imgs else "",
+                        "is_external": True,
+                        "imported_at": datetime.now().isoformat(),
+                    }
+                    with open(meta_path, "w", encoding="utf-8") as mf:
+                        json.dump(meta, mf, indent=2, ensure_ascii=False)
                     imported_count += 1
 
                 elif item_path.suffix.lower() == ".zip":
-                    # Zip archive import: extract contents into article folder
+                    # Zip archive import (reference archive location directly, do not copy)
                     item_stem = item_path.stem
                     target_folder = imported_dir / item_stem
                     counter = 1
@@ -866,23 +976,24 @@ class AppBridge(QObject):
                         counter += 1
                     target_folder.mkdir(parents=True, exist_ok=True)
 
-                    with zipfile.ZipFile(item_path, "r") as zf:
-                        zf.extractall(target_folder)
-
                     meta_path = target_folder / "meta.json"
-                    if not meta_path.exists():
-                        meta = {
-                            "title": item_stem.replace("_", " ").replace("-", " ").title(),
-                            "category": "Imported",
-                            "source_archive": item_path.name,
-                            "imported_at": datetime.now().isoformat(),
-                        }
-                        with open(meta_path, "w", encoding="utf-8") as mf:
-                            json.dump(meta, mf, indent=2, ensure_ascii=False)
+                    meta = {
+                        "title": item_stem.replace("_", " ").replace("-", " ").title(),
+                        "category": "Imported",
+                        "subcategory": "Archives",
+                        "source_dir": str(item_path.parent.resolve()),
+                        "source_archive": str(item_path.resolve()),
+                        "models": [str(item_path.resolve())],
+                        "model_file": str(item_path.resolve()),
+                        "is_external": True,
+                        "imported_at": datetime.now().isoformat(),
+                    }
+                    with open(meta_path, "w", encoding="utf-8") as mf:
+                        json.dump(meta, mf, indent=2, ensure_ascii=False)
                     imported_count += 1
 
                 elif item_path.suffix.lower() not in IMAGE_EXTS:
-                    # Any other file type is imported as a model file (no file-type restriction)
+                    # Model file import (use absolute path, companion images from parent)
                     item_stem = item_path.stem
                     clean_title = item_stem.replace("_", " ").replace("-", " ").title()
                     target_folder = imported_dir / item_stem
@@ -892,27 +1003,24 @@ class AppBridge(QObject):
                         counter += 1
                     target_folder.mkdir(parents=True, exist_ok=True)
 
-                    # Create model subdirectory and copy model
-                    model_dir = target_folder / "model"
-                    model_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(item_path, model_dir / item_path.name)
-
-                    # Look for companion materials (.mtl) or preview images (.png, .jpg) in the same directory
                     parent_dir = item_path.parent
+                    abs_imgs = []
                     for sibling in parent_dir.iterdir():
                         if sibling.is_file() and sibling.name != item_path.name:
                             sib_ext = sibling.suffix.lower()
-                            if sibling.stem.startswith(item_stem):
-                                if sib_ext in IMAGE_EXTS:
-                                    shutil.copy2(sibling, target_folder / sibling.name)
-                                elif sib_ext in {".mtl", ".bin"}:
-                                    shutil.copy2(sibling, model_dir / sibling.name)
+                            if sibling.stem.startswith(item_stem) and sib_ext in IMAGE_EXTS:
+                                abs_imgs.append(str(sibling.resolve()))
 
                     meta = {
                         "title": clean_title,
                         "category": "Imported",
                         "subcategory": "3D Models",
-                        "model_file": item_path.name,
+                        "source_dir": str(item_path.parent.resolve()),
+                        "model_file": str(item_path.resolve()),
+                        "models": [str(item_path.resolve())],
+                        "images": abs_imgs,
+                        "thumbnail": abs_imgs[0] if abs_imgs else "",
+                        "is_external": True,
                         "imported_at": datetime.now().isoformat(),
                     }
                     with open(target_folder / "meta.json", "w", encoding="utf-8") as mf:
@@ -920,7 +1028,7 @@ class AppBridge(QObject):
                     imported_count += 1
 
                 elif item_path.suffix.lower() in IMAGE_EXTS:
-                    # Image file import
+                    # Image file import (use absolute path)
                     item_stem = item_path.stem
                     target_folder = imported_dir / item_stem
                     counter = 1
@@ -928,10 +1036,15 @@ class AppBridge(QObject):
                         target_folder = imported_dir / f"{item_stem}_{counter}"
                         counter += 1
                     target_folder.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(item_path, target_folder / item_path.name)
                     meta = {
                         "title": item_stem.replace("_", " ").replace("-", " ").title(),
                         "category": "Imported",
+                        "subcategory": "General",
+                        "source_dir": str(item_path.parent.resolve()),
+                        "images": [str(item_path.resolve())],
+                        "models": [],
+                        "thumbnail": str(item_path.resolve()),
+                        "is_external": True,
                         "imported_at": datetime.now().isoformat(),
                     }
                     with open(target_folder / "meta.json", "w", encoding="utf-8") as mf:

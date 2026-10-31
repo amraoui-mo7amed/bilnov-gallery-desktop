@@ -190,19 +190,22 @@ class TestOrgaPlus(unittest.TestCase):
             src_model = tmp_dir / "test_model.skp"
             src_model.write_bytes(b"dummy_model_bytes")
 
+            # 1. Default: imports using absolute locations (no file copying)
             res = mgr.add_item(
                 title="Nordic Armchair",
                 image_paths=[str(src_img)],
                 model_paths=[str(src_model)],
                 category="Furniture",
                 subcategory="Chairs",
+                copy_files=False,
             )
 
             expected_path = tmp_dir / "Furniture" / "Chairs" / "Nordic Armchair"
             self.assertTrue(expected_path.exists())
-            self.assertTrue((expected_path / "image_1.jpg").exists())
-            self.assertTrue((expected_path / "model" / "test_model.skp").exists())
             self.assertTrue((expected_path / "meta.json").exists())
+            # Files are NOT copied to save disk space
+            self.assertFalse((expected_path / "image_1.jpg").exists())
+            self.assertFalse((expected_path / "model").exists())
 
             # Verify it is scanned
             scan = mgr.scan_library()
@@ -210,10 +213,26 @@ class TestOrgaPlus(unittest.TestCase):
             self.assertEqual(scan["items"][0]["title"], "Nordic Armchair")
             self.assertEqual(scan["items"][0]["category"], "Furniture")
             self.assertEqual(scan["items"][0]["subcategory"], "Chairs")
+            self.assertTrue(scan["items"][0]["has_model"])
 
             # Verify get_subcategories discovers 'Chairs'
             subcats = mgr.get_subcategories()
             self.assertIn("Chairs", subcats)
+
+            # 2. Test with copy_files=True
+            res_copied = mgr.add_item(
+                title="Copied Chair",
+                image_paths=[str(src_img)],
+                model_paths=[str(src_model)],
+                category="Furniture",
+                subcategory="Chairs",
+                copy_files=True,
+            )
+            copied_path = tmp_dir / "Furniture" / "Chairs" / "Copied Chair"
+            self.assertTrue(copied_path.exists())
+            self.assertTrue((copied_path / "image_1.jpg").exists())
+            self.assertTrue((copied_path / "model" / "test_model.skp").exists())
+            self.assertTrue((copied_path / "meta.json").exists())
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -350,15 +369,17 @@ class TestOrgaPlus(unittest.TestCase):
             # Check files were placed in depth 3: storage / <Job> / <Category> / <Asset>
             imported_asset = tmp_dir / "Interior Designer" / "Tables" / "my_source_asset"
             self.assertTrue(imported_asset.exists())
-            self.assertTrue((imported_asset / "image_1.png").exists())
-            self.assertTrue((imported_asset / "model" / "table.skp").exists())
             self.assertTrue((imported_asset / "meta.json").exists())
+            # Default import does not copy files to prevent disk duplication
+            self.assertFalse((imported_asset / "image_1.png").exists())
+            self.assertFalse((imported_asset / "model").exists())
 
             # Scan library and verify it appears with correct job and category
             scan = mgr.scan_library(category_filter="Interior Designer", subcategory_filter="Tables")
             self.assertEqual(len(scan["items"]), 1)
             self.assertEqual(scan["items"][0]["category"], "Interior Designer")
             self.assertEqual(scan["items"][0]["subcategory"], "Tables")
+            self.assertTrue(scan["items"][0]["has_model"])
 
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -374,6 +395,89 @@ class TestOrgaPlus(unittest.TestCase):
         # Verify getJobFolder
         self.assertEqual(bridge.getJobFolder("architect"), "Architect")
         self.assertEqual(bridge.getJobFolder("graphiste"), "Graphiste")
+
+    def test_inno_setup_script_shortcuts_and_tasks(self):
+        """Verify that the Inno Setup script exists and configures desktop and taskbar shortcuts."""
+        iss_path = ROOT_DIR / "installer" / "orga_plus.iss"
+        self.assertTrue(iss_path.exists())
+        content = iss_path.read_text(encoding="utf-8")
+
+        # Must configure desktopicon and taskbaricon tasks
+        self.assertIn('Name: "desktopicon"', content)
+        self.assertIn('Name: "taskbaricon"', content)
+
+        # Must have [Icons] section with conditional Tasks
+        self.assertIn('Tasks: desktopicon', content)
+        self.assertIn('Tasks: taskbaricon', content)
+
+        # Output filename must be orga+_Setup
+        self.assertIn('OutputBaseFilename=orga+_Setup', content)
+
+    def test_app_bridge_create_shortcut_slot(self):
+        """Verify that AppBridge exposes createShortcut slot for desktop/taskbar shortcuts."""
+        from desktop.backend.app_bridge import AppBridge
+
+        bridge = AppBridge()
+        self.assertTrue(hasattr(bridge, "createShortcut"))
+
+    def test_copy_tool_prioritizes_installer(self):
+        """Verify that orga+ Copy Tool find_orga_app prioritizes the setup installer."""
+        import tempfile
+        import shutil
+        from tools.orga_copy_tool import find_orga_app
+
+        tmp_dist = Path(tempfile.mkdtemp(prefix="test_dist_"))
+        try:
+            installer = tmp_dist / "orga+_Setup.exe"
+            installer.write_bytes(b"dummy_installer_exe")
+            found = find_orga_app(str(installer))
+            self.assertEqual(found, installer.resolve())
+        finally:
+            shutil.rmtree(tmp_dist, ignore_errors=True)
+
+    def test_import_data_no_copy_and_external_location(self):
+        """Verify that importing files/folders stores absolute locations in meta.json without copying files."""
+        import tempfile
+        import shutil
+        import json
+        from desktop.backend.app_bridge import AppBridge
+        from config import DATA_DIR
+
+        bridge = AppBridge()
+        tmp_dir = Path(tempfile.mkdtemp(prefix="test_import_data_"))
+        try:
+            # Create external asset folder
+            ext_asset = tmp_dir / "Sofa_Modern"
+            ext_asset.mkdir()
+            img_file = ext_asset / "sofa.png"
+            img_file.write_bytes(b"dummy_png")
+            model_file = ext_asset / "sofa.skp"
+            model_file.write_bytes(b"dummy_skp")
+
+            # Import folder via importData
+            res = bridge.importData(str(ext_asset))
+            self.assertTrue(res)
+
+            # Check that imported entry exists in DATA_DIR / Imported
+            imported_target = DATA_DIR / "Imported" / "Sofa_Modern"
+            self.assertTrue(imported_target.exists())
+            meta_path = imported_target / "meta.json"
+            self.assertTrue(meta_path.exists())
+
+            # Original files must NOT be copied into imported_target
+            self.assertFalse((imported_target / "sofa.png").exists())
+            self.assertFalse((imported_target / "sofa.skp").exists())
+
+            # Metadata must contain absolute location of files
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            self.assertTrue(meta.get("is_external"))
+            self.assertEqual(meta.get("source_dir"), str(ext_asset.resolve()))
+            self.assertIn(str(img_file.resolve()), meta.get("images", []))
+            self.assertIn(str(model_file.resolve()), meta.get("models", []))
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            if (DATA_DIR / "Imported" / "Sofa_Modern").exists():
+                shutil.rmtree(DATA_DIR / "Imported" / "Sofa_Modern", ignore_errors=True)
 
 
 if __name__ == "__main__":

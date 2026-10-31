@@ -228,6 +228,37 @@ class LibraryManager:
                         models.append(curr_dir / f)
 
             has_meta = (curr_dir / "meta.json").exists()
+            meta = self.get_meta(curr_dir) if has_meta else {}
+
+            # Support external assets referencing absolute locations without copying
+            if has_meta:
+                if meta.get("images"):
+                    ext_imgs = [Path(p) for p in meta["images"] if Path(p).exists()]
+                    if not raw_imgs and ext_imgs:
+                        raw_imgs = ext_imgs
+                if meta.get("thumbnail"):
+                    tb = Path(meta["thumbnail"])
+                    if tb.exists() and tb not in raw_imgs:
+                        raw_imgs.insert(0, tb)
+                if meta.get("models"):
+                    ext_models = [Path(p) for p in meta["models"] if Path(p).exists()]
+                    if not models and ext_models:
+                        models = ext_models
+                if meta.get("model_file"):
+                    mf = Path(meta["model_file"])
+                    if mf.exists() and mf not in models:
+                        models.append(mf)
+                if meta.get("source_dir"):
+                    s_dir = Path(meta["source_dir"])
+                    if s_dir.exists() and s_dir.is_dir():
+                        if not raw_imgs:
+                            for f in s_dir.iterdir():
+                                if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_IMAGE_EXTS:
+                                    raw_imgs.append(f)
+                        if not models:
+                            for f in s_dir.iterdir():
+                                if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_MODEL_EXTS:
+                                    models.append(f)
 
             if not raw_imgs and not models and not has_meta:
                 continue
@@ -305,6 +336,8 @@ class LibraryManager:
                 m_size = main_model.stat().st_size if main_model and main_model.exists() else 0
                 imgs_size = sum(img.stat().st_size for img in raw_imgs if img.exists())
                 rel_article = str(curr_dir.relative_to(self.base_dir))
+                source_dir = meta.get("source_dir")
+                folder_loc = Path(source_dir).resolve() if (source_dir and Path(source_dir).exists()) else curr_dir.resolve()
 
                 discovered_candidates.append({
                     "id": rel_article,
@@ -312,6 +345,7 @@ class LibraryManager:
                     "subcategory": sub_name,
                     "title": article_title,
                     "folder_dir": curr_dir,
+                    "folder_location": folder_loc,
                     "images": raw_imgs,
                     "model_file": main_model,
                     "model_size": m_size,
@@ -361,12 +395,21 @@ class LibraryManager:
 
             images = []
             for img in raw_imgs:
-                images.append(str(img.relative_to(self.base_dir)))
+                try:
+                    images.append(str(img.relative_to(self.base_dir)))
+                except ValueError:
+                    images.append(str(img.resolve()))
                 total_images += 1
-                total_size_bytes += img.stat().st_size
+                total_size_bytes += img.stat().st_size if img.exists() else 0
 
             rel_article = str(curr_dir.relative_to(self.base_dir))
-            rel_model = str(model_file.relative_to(self.base_dir)) if model_file else None
+            if model_file:
+                try:
+                    rel_model = str(model_file.relative_to(self.base_dir))
+                except ValueError:
+                    rel_model = str(model_file.resolve())
+            else:
+                rel_model = None
 
             items.append({
                 "id": candidate["id"],
@@ -374,7 +417,7 @@ class LibraryManager:
                 "subcategory": sub_name,
                 "title": article_title,
                 "folder_path": rel_article,
-                "folder_full_path": str(curr_dir.resolve()),
+                "folder_full_path": str(candidate.get("folder_location", curr_dir.resolve())),
                 "has_model": model_file is not None,
                 "model_filename": model_file.name if model_file else None,
                 "model_path": rel_model,
@@ -513,13 +556,14 @@ class LibraryManager:
         model_paths: List[str],
         category: str = "",
         subcategory: str = "",
+        copy_files: bool = False,
     ) -> Dict[str, Any]:
         """
-        Creates a new article in the library:
-          storage/<Category>/<Subcategory>/<Title>/image_1.ext (thumbnail), image_2.ext, ...
-          storage/<Category>/<Subcategory>/<Title>/model/<sketchup files>
+        Creates a new article entry in the library:
           storage/<Category>/<Subcategory>/<Title>/meta.json
-        The first image provided is always used as the thumbnail.
+        By default (copy_files=False), uses the absolute location of original files
+        rather than copying them into storage, saving disk space and avoiding duplication.
+        If copy_files=True, copies files directly into storage.
         """
         import shutil
         from datetime import datetime
@@ -552,28 +596,45 @@ class LibraryManager:
         target.mkdir(parents=True, exist_ok=False)
 
         try:
-            # Images: numbered so the first one sorts first and becomes the thumbnail
-            for idx, img in enumerate(imgs, start=1):
-                shutil.copy2(img, target / f"image_{idx}{img.suffix.lower()}")
+            abs_imgs = [str(img.resolve()) for img in imgs]
+            abs_models = [str(m.resolve()) for m in models]
+            source_dir = str(models[0].parent.resolve()) if models else (str(imgs[0].parent.resolve()) if imgs else "")
 
-            model_dir = target / "model"
-            model_dir.mkdir(exist_ok=True)
-            for m in models:
-                dest = model_dir / m.name
-                n = 1
-                while dest.exists():
-                    dest = model_dir / f"{m.stem}_{n}{m.suffix}"
-                    n += 1
-                shutil.copy2(m, dest)
+            if copy_files:
+                for idx, img in enumerate(imgs, start=1):
+                    shutil.copy2(img, target / f"image_{idx}{img.suffix.lower()}")
 
-            self.save_meta(target, {
-                "title": clean_title,
-                "category": cat_name,
-                "subcategory": sub_name,
-                "thumbnail": f"image_1{imgs[0].suffix.lower()}",
-                "created_at": datetime.now().isoformat(),
-                "source": "user",
-            })
+                model_dir = target / "model"
+                model_dir.mkdir(exist_ok=True)
+                for m in models:
+                    dest = model_dir / m.name
+                    n = 1
+                    while dest.exists():
+                        dest = model_dir / f"{m.stem}_{n}{m.suffix}"
+                        n += 1
+                    shutil.copy2(m, dest)
+
+                self.save_meta(target, {
+                    "title": clean_title,
+                    "category": cat_name,
+                    "subcategory": sub_name,
+                    "thumbnail": f"image_1{imgs[0].suffix.lower()}",
+                    "created_at": datetime.now().isoformat(),
+                    "source": "user",
+                })
+            else:
+                self.save_meta(target, {
+                    "title": clean_title,
+                    "category": cat_name,
+                    "subcategory": sub_name,
+                    "thumbnail": abs_imgs[0] if abs_imgs else "",
+                    "images": abs_imgs,
+                    "models": abs_models,
+                    "source_dir": source_dir,
+                    "is_external": True,
+                    "created_at": datetime.now().isoformat(),
+                    "source": "user",
+                })
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
             raise
@@ -680,11 +741,13 @@ class LibraryManager:
         folder_path: Path,
         job: str = "Architect",
         category: str = "General",
+        copy_files: bool = False,
     ) -> Dict[str, Any]:
         """
         Imports an entire directory of 3D assets or a single asset folder into the library:
         storage / <job> / <category> / <asset>
         Guarantees strict 3-level hierarchy so all items are discovered by scan_library().
+        By default (copy_files=False), uses absolute locations of the files instead of copying them.
         """
         import shutil
         from datetime import datetime
@@ -702,7 +765,7 @@ class LibraryManager:
         target_parent = self.base_dir / cat_job / sub_cat
         target_parent.mkdir(parents=True, exist_ok=True)
 
-        def _copy_single_asset(asset_src: Path, asset_title: Optional[str] = None) -> bool:
+        def _import_single_asset(asset_src: Path, asset_title: Optional[str] = None) -> bool:
             title = (asset_title or asset_src.name).replace("_", " ").replace("-", " ").strip()
             folder_clean_name = _safe(asset_src.name) or "Imported_Asset"
             dest = target_parent / folder_clean_name
@@ -729,16 +792,7 @@ class LibraryManager:
                     return int(m.group(1)) if m else 9999
                 raw_imgs.sort(key=_sort_key)
 
-                copied_images = []
-                for idx, img in enumerate(raw_imgs, start=1):
-                    dest_img = dest / f"image_{idx}{img.suffix.lower()}"
-                    shutil.copy2(img, dest_img)
-                    copied_images.append(dest_img.name)
-
                 # 2. Models
-                model_dir = dest / "model"
-                model_dir.mkdir(parents=True, exist_ok=True)
-
                 src_model_dir = asset_src / "model"
                 raw_models = []
                 if src_model_dir.exists() and src_model_dir.is_dir():
@@ -750,28 +804,55 @@ class LibraryManager:
                     if f.is_file() and not f.name.startswith(".") and f.suffix.lower() in SUPPORTED_MODEL_EXTS:
                         raw_models.append(f)
 
-                for m in raw_models:
-                    dest_m = model_dir / m.name
-                    counter_m = 1
-                    while dest_m.exists():
-                        dest_m = model_dir / f"{m.stem}_{counter_m}{m.suffix}"
-                        counter_m += 1
-                    shutil.copy2(m, dest_m)
-
-                # 3. Meta
                 existing_meta = self.get_meta(asset_src)
-                meta_data = {
-                    "title": existing_meta.get("title") or title,
-                    "category": cat_job,
-                    "subcategory": sub_cat,
-                    "thumbnail": copied_images[0] if copied_images else "",
-                    "created_at": datetime.now().isoformat(),
-                    "source": "imported_folder",
-                }
-                self.save_meta(dest, meta_data)
+
+                if copy_files:
+                    copied_images = []
+                    for idx, img in enumerate(raw_imgs, start=1):
+                        dest_img = dest / f"image_{idx}{img.suffix.lower()}"
+                        shutil.copy2(img, dest_img)
+                        copied_images.append(dest_img.name)
+
+                    model_dir = dest / "model"
+                    model_dir.mkdir(parents=True, exist_ok=True)
+                    for m in raw_models:
+                        dest_m = model_dir / m.name
+                        counter_m = 1
+                        while dest_m.exists():
+                            dest_m = model_dir / f"{m.stem}_{counter_m}{m.suffix}"
+                            counter_m += 1
+                        shutil.copy2(m, dest_m)
+
+                    meta_data = {
+                        "title": existing_meta.get("title") or title,
+                        "category": cat_job,
+                        "subcategory": sub_cat,
+                        "thumbnail": copied_images[0] if copied_images else "",
+                        "created_at": datetime.now().isoformat(),
+                        "source": "imported_folder",
+                    }
+                    self.save_meta(dest, meta_data)
+                else:
+                    # Use absolute location of files without copying
+                    abs_imgs = [str(f.resolve()) for f in raw_imgs]
+                    abs_models = [str(f.resolve()) for f in raw_models]
+                    meta_data = {
+                        "title": existing_meta.get("title") or title,
+                        "category": cat_job,
+                        "subcategory": sub_cat,
+                        "source_dir": str(asset_src.resolve()),
+                        "images": abs_imgs,
+                        "models": abs_models,
+                        "thumbnail": abs_imgs[0] if abs_imgs else "",
+                        "is_external": True,
+                        "created_at": datetime.now().isoformat(),
+                        "source": "imported_folder",
+                    }
+                    self.save_meta(dest, meta_data)
+
                 return True
             except Exception as e:
-                logger.error("Failed to copy asset %s: %s", asset_src, e)
+                logger.error("Failed to import asset %s: %s", asset_src, e)
                 shutil.rmtree(dest, ignore_errors=True)
                 return False
 
@@ -781,20 +862,20 @@ class LibraryManager:
         imported_count = 0
         if asset_dirs:
             for ad in asset_dirs:
-                if _copy_single_asset(ad):
+                if _import_single_asset(ad):
                     imported_count += 1
         elif self.is_article_dir(src_path):
-            if _copy_single_asset(src_path):
+            if _import_single_asset(src_path):
                 imported_count += 1
         elif child_dirs:
             for cd in child_dirs:
-                if _copy_single_asset(cd):
+                if _import_single_asset(cd):
                     imported_count += 1
             if imported_count == 0:
-                if _copy_single_asset(src_path):
+                if _import_single_asset(src_path):
                     imported_count += 1
         else:
-            if _copy_single_asset(src_path):
+            if _import_single_asset(src_path):
                 imported_count += 1
 
         return {

@@ -136,7 +136,7 @@ def _visible(p: Path) -> bool:
 # --------------------------------------------------------------------------
 
 def has_model(asset: Path) -> bool:
-    """True when the asset folder contains a model or archive file (in model/ dir or asset root)."""
+    """True when the asset folder contains a model or archive file (in model/ dir, asset root, or meta.json)."""
     model_dir = asset / "model"
     if model_dir.is_dir():
         for f in model_dir.iterdir():
@@ -151,6 +151,18 @@ def has_model(asset: Path) -> bool:
             ext = f.suffix.lower()
             if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
                 return True
+
+    meta_file = asset / "meta.json"
+    if meta_file.exists():
+        try:
+            m_data = json.loads(meta_file.read_text(encoding="utf-8"))
+            if any(Path(p).exists() for p in m_data.get("models", [])):
+                return True
+            if m_data.get("model_file") and Path(m_data["model_file"]).exists():
+                return True
+        except Exception:
+            pass
+
     return False
 
 
@@ -172,6 +184,22 @@ def get_model_details(asset: Path) -> Tuple[str, bool, Optional[Path]]:
                 ext = f.suffix.lower()
                 if ext in MODEL_EXTS or ext in ARCHIVE_EXTS:
                     candidates.append(f)
+
+    if not candidates:
+        meta_file = asset / "meta.json"
+        if meta_file.exists():
+            try:
+                m_data = json.loads(meta_file.read_text(encoding="utf-8"))
+                for m_p in m_data.get("models", []):
+                    p = Path(m_p)
+                    if p.exists() and (p.suffix.lower() in MODEL_EXTS or p.suffix.lower() in ARCHIVE_EXTS):
+                        candidates.append(p)
+                if not candidates and m_data.get("model_file"):
+                    mf = Path(m_data["model_file"])
+                    if mf.exists():
+                        candidates.append(mf)
+            except Exception:
+                pass
 
     if not candidates:
         return ("", False, None)
@@ -453,16 +481,29 @@ def scan_items(root: Path, models_only: bool = True) -> Tuple[List[CopyItem], in
 
             title = default_title
             meta_p = curr_dir / "meta.json"
+            files = _iter_asset_files(curr_dir)
+            custom_files = None
             if meta_p.exists():
                 try:
                     meta_data = json.loads(meta_p.read_text(encoding="utf-8"))
                     if meta_data.get("title"):
                         title = meta_data.get("title")
+                    ext_f = []
+                    for mp in meta_data.get("models", []):
+                        p = Path(mp)
+                        if p.exists() and p not in ext_f:
+                            ext_f.append(p)
+                    for ip in meta_data.get("images", []):
+                        p = Path(ip)
+                        if p.exists() and p not in ext_f:
+                            ext_f.append(p)
+                    if ext_f and len(files) <= 1:
+                        files = ext_f
+                        custom_files = ext_f
                 except Exception:
                     pass
 
-            files = _iter_asset_files(curr_dir)
-            size = sum(f.stat().st_size for f in files)
+            size = sum(f.stat().st_size for f in files if f.exists())
 
             items.append(
                 CopyItem(
@@ -475,6 +516,7 @@ def scan_items(root: Path, models_only: bool = True) -> Tuple[List[CopyItem], in
                     model_format=fmt,
                     is_zip=is_zip,
                     model_path=model_p,
+                    custom_files=custom_files,
                 )
             )
 
@@ -621,11 +663,17 @@ def find_orga_app(custom_path: Optional[str] = None) -> Optional[Path]:
         ])
     elif sys.platform == "win32":
         candidates.extend([
+            dist_dir / "orga+_Setup.exe",
+            dist_dir / "orga+-Setup.exe",
+            dist_dir / "orga+ Setup.exe",
+            dist_dir / "orga+-Installer.exe",
             dist_dir / "orga+.exe",
             dist_dir / "olga+.exe",
             dist_dir / "orga+ Copy Tool.exe",
             dist_dir / "orga+-Portable",
             dist_dir / "olga+-Portable",
+            here / "orga+_Setup.exe",
+            here / "orga+-Setup.exe",
             here / "orga+.exe",
             here / "olga+.exe",
         ])
