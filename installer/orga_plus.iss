@@ -65,12 +65,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: taskbaricon
 
 [Run]
-; PowerShell script to ensure desktop shortcut is created and pinned properly if selected
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([System.IO.Path]::Combine([System.Environment]::GetFolderPath('Desktop'), '{#MyAppName}.lnk')); $s.TargetPath = '{app}\{#MyAppExeName}'; $s.WorkingDirectory = '{app}'; $s.IconLocation = '{app}\{#MyAppExeName},0'; $s.Save()"""; Flags: runhidden; Tasks: desktopicon
-
-; PowerShell script to ensure taskbar shortcut is created and pinned properly if selected
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$ws = New-Object -ComObject WScript.Shell; $tbDir = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'); if (-not (Test-Path $tbDir)) { New-Item -ItemType Directory -Path $tbDir -Force | Out-Null }; $s = $ws.CreateShortcut([System.IO.Path]::Combine($tbDir, '{#MyAppName}.lnk')); $s.TargetPath = '{app}\{#MyAppExeName}'; $s.WorkingDirectory = '{app}'; $s.IconLocation = '{app}\{#MyAppExeName},0'; $s.Save()"""; Flags: runhidden; Tasks: taskbaricon
-
 ; Option to launch orga+ after setup completes
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
